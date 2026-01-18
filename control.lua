@@ -12,12 +12,14 @@ storage.highlight_data = storage.highlight_data or {} -- Stores highlight data f
 script.on_init(function()
     storage.highlight_data = storage.highlight_data or {}
     Stations.init()
+    SpaceShip.update_all_ship_docking_status()
 end)
 
 -- Handle configuration changes (mod updates)
 script.on_configuration_changed(function()
     storage.highlight_data = storage.highlight_data or {}
     Stations.init()
+    SpaceShip.update_all_ship_docking_status()
 end)
 
 -- Get the event IDs from gui mod
@@ -232,7 +234,7 @@ script.on_event(defines.events.on_tick, function(event)
 
     if game.tick % 60 == 0 then
         for _, ship in pairs(storage.spaceships or {}) do
-            local player = storage.spaceships[1].player
+            local player = ship.player
             if player.gui.relative["schedule-container"] then
                 signals = SpaceShip.read_circuit_signals(ship.hub)
                 values = SpaceShip.get_progress_values(ship, signals)
@@ -242,10 +244,22 @@ script.on_event(defines.events.on_tick, function(event)
             end
         end
         SpaceShip.check_automatic_behavior()
+        SpaceShip.check_waiting_ships_for_dock_availability()
     end
 
     -- Process pending planet drops
     SpaceShip.process_pending_drops()
+
+    -- Restore entities that were temporarily disabled during cloning
+    if storage.entities_to_restore and storage.entities_to_restore_tick and game.tick >= storage.entities_to_restore_tick then
+        for _, entity_data in pairs(storage.entities_to_restore) do
+            if entity_data.entity and entity_data.entity.valid then
+                entity_data.entity.active = entity_data.active
+            end
+        end
+        storage.entities_to_restore = nil
+        storage.entities_to_restore_tick = nil
+    end
 end)
 
 script.on_event(defines.events.on_player_driving_changed_state, function(event)

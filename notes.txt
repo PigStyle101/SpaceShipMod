@@ -1,5 +1,9 @@
 custom gui that uses space hub inventory, that way stuff is hidden
 
+Current bugs: 
+-storage.spaceship losses a space ship when 2 are placed, causeing crash when hovering ship that is not storred
+-Dock waiting not working
+
 need to do: -=important,--=less important
 -add check to not let ship go into auto if there is not a port selected
 -add docking port ship limit logic

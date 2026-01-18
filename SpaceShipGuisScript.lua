@@ -9,6 +9,44 @@ function SpaceShipGuis.on_station_selected(event)
     if ship then
         game.print("Station " .. event.selected_station .. " selected for ship " .. ship.name)
         SpaceShip.add_or_change_station(ship, event.selected_station)
+        
+        -- Initialize port_records if needed
+        if not ship.port_records then
+            ship.port_records = {}
+        end
+        
+        -- Find the station index for the newly added station
+        local station_index = nil
+        if ship.schedule and ship.schedule.records then
+            for i, record in pairs(ship.schedule.records) do
+                if record.station == event.selected_station then
+                    station_index = i
+                    break
+                end
+            end
+        end
+        
+        -- Auto-assign the first available port for this planet
+        if station_index then
+            local first_port = nil
+            for unit_number, port_data in pairs(storage.docking_ports or {}) do
+                if port_data.surface and port_data.surface.platform and 
+                   port_data.surface.platform.space_location and
+                   port_data.surface.platform.space_location.name == event.selected_station and
+                   port_data.name ~= "ship" then
+                    first_port = port_data.name
+                    break
+                end
+            end
+            
+            if first_port then
+                ship.port_records[station_index] = first_port
+                game.print("Auto-assigned port '" .. first_port .. "' for station " .. event.selected_station)
+            else
+                game.print("Warning: No available ports found for station " .. event.selected_station)
+            end
+        end
+        
         SpaceShipGuis.gui_maker_handler(ship, event.player_index)
     end
 end
@@ -34,11 +72,15 @@ end
 function SpaceShipGuis.on_station_dock_selected(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
-        game.print("Ship " .. ship.name .. " handling dock")
-        if not ship.port_records[event.station_index] then
-            ship.port_records[event.station_index] = {}
+        game.print("Ship " .. ship.name .. " handling dock selection")
+        -- Initialize port_records if needed
+        if not ship.port_records then
+            ship.port_records = {}
         end
+        
+        -- Store the port name for this station (e.g., "nauvis0", "nauvis1", etc.)
         ship.port_records[event.station_index] = event.selected_dock
+        game.print("Selected port '" .. event.selected_dock .. "' for station " .. event.station_index)
         SpaceShipGuis.gui_maker_handler(ship, event.player_index)
     end
 end
@@ -65,6 +107,7 @@ function SpaceShipGuis.on_station_goto(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
         game.print("Ship " .. ship.name .. " handling goto")
+        SpaceShip.goto_station(ship, event.station_index)
     end
     SpaceShipGuis.gui_maker_handler(ship, event.player_index)
 end
@@ -318,6 +361,8 @@ function SpaceShipGuis.handle_button_click(event)
         game.print("dropping items to planet")
         local ship = storage.spaceships[event.element.tags.ship]
         SpaceShip.drop_items_to_planet(ship)
+    elseif button_name == "close-dock-gui" then
+        SpaceShipGuis.close_docking_port_gui(player)
     else
         game.print("Unknown button clicked: " .. button_name)
     end
@@ -398,6 +443,16 @@ function SpaceShipGuis.create_docking_port_gui(player, docking_port)
         caption = "Close",
         style = "back_button" -- Using a built-in button style
     }
+end
+
+function SpaceShipGuis.close_docking_port_gui(player)
+    -- Close the docking port GUI
+    if player.gui.screen["docking-port-gui"] then
+        player.gui.screen["docking-port-gui"].destroy()
+    end
+    
+    -- Clear the selected docking port reference
+    storage.selected_docking_port = nil
 end
 
 function SpaceShipGuis.handle_text_changed_docking_port(event)

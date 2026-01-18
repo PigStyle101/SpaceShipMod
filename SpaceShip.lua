@@ -1,57 +1,67 @@
-local SpaceShip = {}
-SpaceShip.__index = SpaceShip
-local SpaceShipFunctions = require("SpaceShipFunctionsScript")
+local SpaceShip                 = {}
+SpaceShip.__index               = SpaceShip
+local SpaceShipFunctions        = require("SpaceShipFunctionsScript")
 
-local DROP_COST = {
+local DROP_COST                 = {
     ["rocket-fuel"] = 20,
     ["processing-unit"] = 20,
     ["low-density-structure"] = 20
 }
 
-SpaceShip.hub               = nil
-SpaceShip.floor             = {}                         -- Table to store floor tiles
-SpaceShip.walls             = {}                         -- Table to store wall tiles
-SpaceShip.entities          = {}                         -- Table to store entities
-SpaceShip.name              = nil or "Unnamed SpaceShip" -- Name of the spaceship
-SpaceShip.id                = nil or 0                   -- Unique ID for the spaceship
-SpaceShip.player_owner      = nil                        -- Reference to the player prototype
-SpaceShip.referance_tile    = nil
-SpaceShip.surface           = nil
-SpaceShip.scanned           = false
-SpaceShip.player_in_cockpit = nil
-SpaceShip.taking_off        = false
-SpaceShip.own_surface       = false
-SpaceShip.planet_orbiting   = nil
-SpaceShip.schedule          = {}
-SpaceShip.traveling         = false
-SpaceShip.automatic         = false
-SpaceShip.port_records      = {}
-SpaceShip.docking_port      = nil
+SpaceShip.hub                   = nil
+SpaceShip.floor                 = {}                     -- Table to store floor tiles
+SpaceShip.walls                 = {}                     -- Table to store wall tiles
+SpaceShip.entities              = {}                     -- Table to store entities
+SpaceShip.name                  = nil or "Unnamed SpaceShip" -- Name of the spaceship
+SpaceShip.id                    = nil or 0               -- Unique ID for the spaceship
+SpaceShip.player_owner          = nil                    -- Reference to the player prototype
+SpaceShip.referance_tile        = nil
+SpaceShip.surface               = nil
+SpaceShip.scanned               = false
+SpaceShip.scanning              = false
+SpaceShip.player_in_cockpit     = nil
+SpaceShip.taking_off            = false
+SpaceShip.own_surface           = false
+SpaceShip.planet_orbiting       = nil
+SpaceShip.schedule              = {}
+SpaceShip.traveling             = false
+SpaceShip.automatic             = false
+SpaceShip.port_records          = {}
+SpaceShip.docking_port          = nil
+SpaceShip.docked                = true
+SpaceShip.leave_immediately     = false
+SpaceShip.waiting_for_open_dock = false
+SpaceShip.waiting_for_scan      = false
 
 -- Constructor for creating a new SpaceShip
 function SpaceShip.new(name, id, player)
-    local self             = setmetatable({}, SpaceShip)
+    local self                 = setmetatable({}, SpaceShip)
 
     -- Initialize spaceship parameters
-    self.floor             = {}                          -- Table to store floor tiles
-    self.walls             = {}                          -- Table to store wall tiles
-    self.entities          = {}                          -- Table to store entities
-    self.name              = name or "Unnamed SpaceShip" -- Name of the spaceship
-    self.id                = id or 0                     -- Unique ID for the spaceship
-    self.player            = player                      -- Reference to the player prototype
-    self.hub               = nil
-    self.referance_tile    = nil
-    self.surface           = nil
-    self.scanned           = false
-    self.player_in_cockpit = nil
-    self.taking_off        = false
-    self.own_surface       = false
-    self.planet_orbiting   = nil
-    self.schedule          = {}
-    self.traveling         = false
-    self.automatic         = false
-    self.port_records      = {}
-    self.docking_port      = nil
+    self.floor                 = {}                      -- Table to store floor tiles
+    self.walls                 = {}                      -- Table to store wall tiles
+    self.entities              = {}                      -- Table to store entities
+    self.name                  = name or "Unnamed SpaceShip" -- Name of the spaceship
+    self.id                    = id or 0                 -- Unique ID for the spaceship
+    self.player                = player                  -- Reference to the player prototype
+    self.hub                   = nil
+    self.referance_tile        = nil
+    self.surface               = nil
+    self.scanned               = false
+    self.scanning              = false
+    self.player_in_cockpit     = nil
+    self.taking_off            = false
+    self.own_surface           = false
+    self.planet_orbiting       = nil
+    self.schedule              = {}
+    self.traveling             = false
+    self.automatic             = false
+    self.port_records          = {}
+    self.docking_port          = nil
+    self.docked                = true
+    self.leave_immediately     = false
+    self.waiting_for_open_dock = false
+    self.waiting_for_scan      = false
 
     -- Store the spaceship in the global storage
     return self
@@ -213,7 +223,7 @@ function SpaceShip.ship_takeoff(ship, dropdown)
         records = {
             {
                 station = station,
-                wait_conditions = {
+                wait_conditions = { --[[
                     {
                         type = "circuit",
                         compare_type = "and",
@@ -227,10 +237,10 @@ function SpaceShip.ship_takeoff(ship, dropdown)
                             comparator = "<",
                             constant = 10
                         }
-                    }
+                    }]] --
                 },
                 temporary = true,
-                created_by_interrupt = false,
+                created_by_interrupt = true,
                 allows_unloading = false
             }
         }
@@ -298,9 +308,6 @@ function SpaceShip.add_or_change_station(ship, planet_name, index)
     if ship.platform then
         ship.platform.schedule = ship.schedule
     end
-    for key, value in pairs(storage.docking_ports) do
-
-    end
 end
 
 function SpaceShip.delete_station(ship, station_index)
@@ -327,11 +334,17 @@ function SpaceShip.delete_station(ship, station_index)
 end
 
 function SpaceShip.clone_ship_area(ship, dest_surface, dest_center, excluded_types)
+    local tick = game.tick
     local src_surface = ship.surface.platform.surface
-    -- Create the offset between the source and destination areas
     local reference_tile = ship.reference_tile
     if not reference_tile then
-        error("Reference tile is missing from ship data.")
+        game.print("Error: Reference tile is missing from ship data. Ship may need to be rescanned.")
+        return false
+    end
+
+    if not ship.floor or table_size(ship.floor) == 0 then
+        game.print("Error: Ship floor data is missing. Ship may need to be rescanned.")
+        return false
     end
 
     local offset = {
@@ -339,113 +352,215 @@ function SpaceShip.clone_ship_area(ship, dest_surface, dest_center, excluded_typ
         y = math.ceil(dest_center.y - reference_tile.position.y)
     }
 
-    -- Calculate the bounding box of the ship to ensure proper chunk generation
+    -- Calculate ship bounds
     local min_x, max_x = math.huge, -math.huge
     local min_y, max_y = math.huge, -math.huge
-    
-    -- Find the bounds of all ship tiles
+
     for _, tile in pairs(ship.floor) do
-        local dest_x = tile.position.x + offset.x
-        local dest_y = tile.position.y + offset.y
-        min_x = math.min(min_x, dest_x)
-        max_x = math.max(max_x, dest_x)
-        min_y = math.min(min_y, dest_y)
-        max_y = math.max(max_y, dest_y)
+        min_x = math.min(min_x, tile.position.x)
+        max_x = math.max(max_x, tile.position.x)
+        min_y = math.min(min_y, tile.position.y)
+        max_y = math.max(max_y, tile.position.y)
     end
-    
-    -- Add padding around the ship bounds
-    local padding = 32 -- 32 tiles padding (1 chunk)
-    min_x = min_x - padding
-    max_x = max_x + padding
-    min_y = min_y - padding
-    max_y = max_y + padding
-    
-    -- Calculate chunk radius needed to cover the entire ship area
-    local ship_width = max_x - min_x
-    local ship_height = max_y - min_y
-    local max_dimension = math.max(ship_width, ship_height)
-    local chunk_radius = math.ceil(max_dimension / 32) + 2 -- +2 for extra safety
-    
-    game.print("Generating chunks for ship area: " .. ship_width .. "x" .. ship_height .. " (radius: " .. chunk_radius .. ")")
-    
-    -- Request chunk generation for the entire ship area
-    dest_surface.request_to_generate_chunks(dest_center, chunk_radius)
+
+    local ship_area = {
+        left_top = { x = min_x, y = min_y },
+        right_bottom = { x = max_x, y = max_y }
+    }
+
+    local dest_area = {
+        left_top = { x = min_x + offset.x, y = min_y + offset.y },
+        right_bottom = { x = max_x + offset.x, y = max_y + offset.y }
+    }
+
+    -- Flag cloning in progress
+    ship.is_cloning = true
+
+    -- Force chunk generation
+    dest_surface.request_to_generate_chunks(dest_center, math.ceil(math.max(max_x - min_x, max_y - min_y) / 32) + 2)
     dest_surface.force_generate_chunk_requests()
 
-    -- Clone tiles
-    local tiles_to_set = {}
+    -- Prepare tile data for cloning
+    local change_tiles_dest = {}
+    local clone_positions = {}
     for _, tile in pairs(ship.floor) do
-        table.insert(tiles_to_set, {
+        table.insert(change_tiles_dest, {
             name = "spaceship-flooring",
-            position = {
-                x = tile.position.x + offset.x,
-                y = tile.position.y + offset.y
-            }
+            position = { x = tile.position.x + offset.x, y = tile.position.y + offset.y }
         })
+        table.insert(clone_positions, { x = tile.position.x, y = tile.position.y })
     end
-    dest_surface.set_tiles(tiles_to_set)
-    -- Filter entities to exclude certain types, ex.(player,robots)
-    local entities_to_clone = {}
-    
-    -- Explicitly ensure the hub is included in the clone list
-    if ship.hub and ship.hub.valid then
-        table.insert(entities_to_clone, ship.hub)
-    end
-    
-    -- Add all other entities from the ship
-    for _, entity in pairs(ship.entities) do
-        if entity.valid and not excluded_types[entity.type] then --filter happens here
-            -- Don't add hub twice if it's already in entities (prevents duplication)
-            if not (ship.hub and entity.unit_number == ship.hub.unit_number) then
-                table.insert(entities_to_clone, entity)
-            end
+    dest_surface.set_tiles(change_tiles_dest, true)
+
+    -- Handle vehicles before cloning
+    local vehicles = src_surface.find_entities_filtered {
+        type = { "car", "spider-vehicle" },
+        area = ship_area
+    }
+    local rail_vehicles = src_surface.find_entities_filtered {
+        type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" },
+        area = ship_area
+    }
+    local rail_vehicle_drivers = {}
+    local train_settings = {}
+
+    -- Store train settings and remove drivers
+    for _, locomotive in pairs(src_surface.find_entities_filtered { type = "locomotive", area = ship_area }) do
+        local train = locomotive.train
+        if train and not train_settings[train.id] then
+            train_settings[train.id] = {
+                schedule = train.schedule,
+                manual_mode = train.manual_mode,
+                name = locomotive.name,
+                position = locomotive.position
+            }
         end
     end
 
-    src_surface.clone_entities({
-        entities = entities_to_clone,
-        destination_surface = dest_surface,
-        destination_offset = offset,
-        snap_to_grid = true -- Ensure precise placement
-    })
+    for _, vehicle in pairs(rail_vehicles) do
+        local driver = vehicle.get_driver()
+        vehicle.set_driver(nil)
+        if driver and driver.is_player() then
+            driver = driver.character
+        end
+        if driver and driver.valid then
+            table.insert(rail_vehicle_drivers, {
+                vehicle_name = vehicle.name,
+                vehicle_position = vehicle.position,
+                driver_name = driver.name,
+                driver_position = driver.position
+            })
+        end
+    end
 
+    -- Handle characters before cloning
+    local characters = src_surface.find_entities_filtered {
+        type = "character",
+        area = ship_area
+    }
+
+    -- Store character data and temporarily remove them from the ship area
+    local character_data = {}
+    for _, character in pairs(characters) do
+        if character.valid then
+            -- Store original position
+            table.insert(character_data, {
+                character = character,
+                original_position = { x = character.position.x, y = character.position.y }
+            })
+            -- Teleport character out of cloning area temporarily
+            character.teleport({ x = character.position.x + 1000, y = character.position.y + 1000 }, src_surface)
+        end
+    end
+
+    -- Use optimized clone_brush for bulk cloning
+    src_surface.clone_brush {
+        source_offset = { 0, 0 },
+        destination_offset = { offset.x, offset.y },
+        destination_surface = dest_surface,
+        clone_tiles = false,
+        clone_entities = true,
+        clone_decoratives = false,
+        clear_destination_entities = false,
+        clear_destination_decoratives = false,
+        expand_map = true,
+        source_positions = clone_positions
+    }
+
+    -- Teleport vehicles
+    for _, vehicle in pairs(vehicles) do
+        if vehicle.valid and not excluded_types[vehicle.type] then
+            local new_pos = { x = vehicle.position.x + offset.x, y = vehicle.position.y + offset.y }
+            vehicle.teleport(new_pos, dest_surface)
+        end
+    end
+
+    -- Teleport characters to the destination using stored original positions
+    for _, data in pairs(character_data) do
+        if data.character.valid then
+            local new_pos = { x = data.original_position.x + offset.x, y = data.original_position.y + offset.y }
+            data.character.teleport(new_pos, dest_surface)
+        end
+    end
+
+    -- Pause entities temporarily to prevent state corruption
+    local condition_entities = dest_surface.find_entities_filtered {
+        type = { "inserter", "transport-belt", "underground-belt", "splitter", "assembling-machine", "furnace" },
+        area = dest_area
+    }
+    storage.entities_to_restore = storage.entities_to_restore or {}
+    storage.entities_to_restore_tick = tick + 60
+    for _, entity in pairs(condition_entities) do
+        table.insert(storage.entities_to_restore, {
+            entity = entity,
+            active = entity.active
+        })
+        entity.active = false
+    end
+
+    -- Restore original surface tiles
+    local change_tiles_source = {}
+    for _, tile in pairs(ship.floor) do
+        local hidden_tile = src_surface.get_hidden_tile(tile.position)
+        if not hidden_tile then
+            hidden_tile = "space-platform-foundation"
+        end
+        table.insert(change_tiles_source, {
+            name = hidden_tile,
+            position = tile.position
+        })
+        src_surface.set_hidden_tile(tile.position, nil)
+    end
+    src_surface.set_tiles(change_tiles_source, true, false)
+
+    -- Destroy original entities
     for _, entity in pairs(ship.entities) do
         if entity and entity.valid then
             entity.destroy()
         end
     end
 
-    local hidden_tiles_to_set = {}
-    for _, tile in pairs(ship.floor) do
-        local hidden_tile_name = src_surface.get_hidden_tile({ x = tile.position.x, y = tile.position.y })
-        if hidden_tile_name then
-            table.insert(hidden_tiles_to_set, {
-                name = hidden_tile_name,
-                position = { x = tile.position.x, y = tile.position.y }
-            })
-        else
-            game.print("Error: No hidden tile found for position (" ..
-                tile.position.x .. ", " .. tile.position.y .. ").")
+    -- Restore train drivers
+    for _, driver_data in pairs(rail_vehicle_drivers) do
+        local vehicle = dest_surface.find_entity(driver_data.vehicle_name,
+            { x = driver_data.vehicle_position.x + offset.x, y = driver_data.vehicle_position.y + offset.y })
+        local driver = dest_surface.find_entity(driver_data.driver_name,
+            { x = driver_data.driver_position.x + offset.x, y = driver_data.driver_position.y + offset.y })
+        if vehicle and driver then
+            vehicle.set_driver(driver)
         end
     end
 
-    if #hidden_tiles_to_set > 0 then
-        src_surface.set_tiles(hidden_tiles_to_set)
-    else
-        game.print("Error: No valid hidden tiles to set.")
+    -- Restore train settings
+    for _, locomotive_data in pairs(train_settings) do
+        local locomotive = dest_surface.find_entity(locomotive_data.name,
+            { x = locomotive_data.position.x + offset.x, y = locomotive_data.position.y + offset.y })
+        if locomotive and locomotive.train then
+            locomotive.train.schedule = locomotive_data.schedule
+            locomotive.train.manual_mode = locomotive_data.manual_mode
+        end
     end
-    
-    -- Force chart refresh around the cloned area to ensure proper rendering
+
+    -- Update ship references
+    if ship.hub then
+        local new_hub = dest_surface.find_entity("spaceship-control-hub",
+            { x = ship.hub.position.x + offset.x, y = ship.hub.position.y + offset.y })
+        if new_hub then
+            ship.hub = new_hub
+        end
+    end
+
+    ship.is_cloning = false
+    ship.surface_lock_timeout = tick + 60
+
+    -- Chart the destination area
     if ship.player and ship.player.valid then
-        -- Chart the area around the cloned ship for the player's force
-        local chart_area = {
-            left_top = {x = min_x, y = min_y},
-            right_bottom = {x = max_x, y = max_y}
-        }
-        ship.player.force.chart(dest_surface, chart_area)
-        game.print("Map charted after ship cloning.")
+        ship.player.force.chart(dest_surface, {
+            left_top = { x = dest_area.left_top.x - 32, y = dest_area.left_top.y - 32 },
+            right_bottom = { x = dest_area.right_bottom.x + 32, y = dest_area.right_bottom.y + 32 }
+        })
     end
-    
+
     SpaceShip.start_scan_ship(ship)
 end
 
@@ -458,6 +573,17 @@ function SpaceShip.clone_ship_to_space_platform(ship)
     if not ship.scanned then
         game.print("Error: No scanned ship data found. Run a ship scan first.")
         return
+    end
+
+    -- Free up the current docking port when ship leaves
+    if ship.docking_port and ship.docking_port.valid then
+        for unit_number, port_data in pairs(storage.docking_ports or {}) do
+            if port_data.entity.unit_number == ship.docking_port.unit_number then
+                storage.docking_ports[unit_number].ship_docked = false
+                game.print("Port freed: " .. (port_data.name or "unnamed") .. " is now available")
+                break
+            end
+        end
     end
 
     local space_platform_temp
@@ -535,6 +661,7 @@ function SpaceShip.clone_ship_to_space_platform(ship)
     ship.planet_orbiting = OG_surface
     ship.surface = space_platform.surface
     ship.traveling = true
+    ship.docked = false
 end
 
 function SpaceShip.start_scan_ship(ship, scan_per_tick, tick_amount)
@@ -558,6 +685,9 @@ function SpaceShip.start_scan_ship(ship, scan_per_tick, tick_amount)
         ship = SpaceShip.new("Explorer" .. count, count, player)
     end
 
+    -- Preserve important ship data during scan
+    local preserved_port_records = ship.port_records
+
     ship.floor = nil
     ship.entities = nil
     ship.reference_tile = nil
@@ -575,9 +705,10 @@ function SpaceShip.start_scan_ship(ship, scan_per_tick, tick_amount)
         docking_port = nil,
         scan_radius = scan_radius,
         start_pos = start_pos,
-        scan_per_tick = scan_per_tick or 30, -- how many tiles to scan per tick
-        tick_counter = 0,                    -- Counter to track ticks for progress updates
-        tick_amount = tick_amount or 1       --how ofter to keep scanning, higher=slower
+        scan_per_tick = scan_per_tick or 30,            -- how many tiles to scan per tick
+        tick_counter = 0,                               -- Counter to track ticks for progress updates
+        tick_amount = tick_amount or 1,                 --how ofter to keep scanning, higher=slower
+        preserved_port_records = preserved_port_records -- Preserve port_records during scan
     }
     game.print("Ship scan started. Scanning up to " ..
         storage.scan_state.scan_per_tick .. " tiles per " .. storage.scan_state.tick_amount .. " tick(s).")
@@ -601,6 +732,12 @@ function SpaceShip.continue_scan_ship()
             ship.reference_tile = state.reference_tile
             ship.surface = state.surface
             ship.scanned = true
+            ship.waiting_for_scan = false
+
+            -- Restore preserved port_records
+            if state.preserved_port_records then
+                ship.port_records = state.preserved_port_records
+            end
             if state.surface.platform.space_location then
                 ship.planet_orbiting = state.surface.platform.space_location.name
             else
@@ -940,21 +1077,23 @@ function SpaceShip.get_progress_values(ship, signals)
             for condition_index, condition in pairs(station.wait_conditions) do
                 local progress_value = 0
 
-                local signal_value = signals[condition.condition.first_signal.name]
-                if signal_value then
-                    local target_value = condition.condition.constant
+                if condition and condition.condition and condition.condition.first_signal then
+                    local signal_value = signals[condition.condition.first_signal.name]
+                    if signal_value then
+                        local target_value = condition.condition.constant
 
-                    -- Calculate progress value (0-1) for progress bar.
-                    if condition.condition.comparator == ">" then
-                        progress_value = signal_value / target_value
-                    elseif condition.condition.comparator == ">=" then
-                        progress_value = signal_value / target_value
-                    elseif condition.condition.comparator == "<" then
-                        progress_value = target_value / signal_value
-                    elseif condition.condition.comparator == "<=" then
-                        progress_value = target_value / signal_value
-                    elseif condition.condition.comparator == "=" then
-                        progress_value = signal_value / target_value
+                        -- Calculate progress value (0-1) for progress bar.
+                        if condition.condition.comparator == ">" then
+                            progress_value = signal_value / target_value
+                        elseif condition.condition.comparator == ">=" then
+                            progress_value = signal_value / target_value
+                        elseif condition.condition.comparator == "<" then
+                            progress_value = target_value / signal_value
+                        elseif condition.condition.comparator == "<=" then
+                            progress_value = target_value / signal_value
+                        elseif condition.condition.comparator == "=" then
+                            progress_value = signal_value / target_value
+                        end
                     end
                 end
 
@@ -991,36 +1130,51 @@ function SpaceShip.check_schedule_conditions(ship)
 
     local current_station = ship.schedule.records[ship.schedule.current]
     if not current_station or not current_station.wait_conditions then
-        return false
+        return true -- No conditions means conditions are satisfied
+    end
+
+    -- If the station has no conditions (empty table), return true
+    if #current_station.wait_conditions == 0 then
+        return true
     end
 
     local result = true
     local temp_and_result = true
+    local valid_conditions_found = false
 
     for i, condition in ipairs(current_station.wait_conditions) do
-        local condition_met = SpaceShip.check_circuit_condition(
-            ship.hub,
-            condition.condition.first_signal.name,
-            condition.condition.comparator,
-            tonumber(condition.condition.constant)
-        )
+        -- Check if condition has proper structure
+        if condition and condition.condition and condition.condition.first_signal then
+            valid_conditions_found = true
+            local condition_met = SpaceShip.check_circuit_condition(
+                ship.hub,
+                condition.condition.first_signal.name,
+                condition.condition.comparator,
+                tonumber(condition.condition.constant)
+            )
 
-        if condition.compare_type == "and" then
-            -- Combine with the temporary `and` result
-            temp_and_result = temp_and_result and condition_met
-        elseif condition.compare_type == "or" then
-            -- Apply the grouped `and` result to the main result
-            result = result or temp_and_result
-            temp_and_result = condition_met -- Reset for the next group
-        else
-            -- If no `and` or `or`, treat it as a standalone condition
-            temp_and_result = condition_met
-        end
+            if condition.compare_type == "and" then
+                -- Combine with the temporary `and` result
+                temp_and_result = temp_and_result and condition_met
+            elseif condition.compare_type == "or" then
+                -- Apply the grouped `and` result to the main result
+                result = result or temp_and_result
+                temp_and_result = condition_met -- Reset for the next group
+            else
+                -- If no `and` or `or`, treat it as a standalone condition
+                temp_and_result = condition_met
+            end
 
-        -- If the result is already false for `and`, or true for `or`, we can short-circuit
-        if (condition.compare_type == "and" and not temp_and_result) or (condition.compare_type == "or" and result) then
-            break
+            -- If the result is already false for `and`, or true for `or`, we can short-circuit
+            if (condition.compare_type == "and" and not temp_and_result) or (condition.compare_type == "or" and result) then
+                break
+            end
         end
+    end
+
+    -- If no valid conditions were found, always return true
+    if not valid_conditions_found then
+        return true
     end
 
     -- Apply the final grouped `and` result to the main result
@@ -1030,6 +1184,30 @@ function SpaceShip.check_schedule_conditions(ship)
         result = result and temp_and_result
     end
     return result
+end
+
+function SpaceShip.check_waiting_ships_for_dock_availability()
+    if not storage.spaceships or not storage.docking_ports then return end
+    
+    for ship_id, ship in pairs(storage.spaceships) do
+        if ship.waiting_for_open_dock and ship.own_surface and ship.traveling then
+            local schedule = ship.schedule
+            if schedule and schedule.records and schedule.records[schedule.current] then
+                local selected_port_name = ship.port_records[schedule.current]
+                if selected_port_name then
+                    -- Check if the previously occupied port is now available
+                    for unit_number, port_data in pairs(storage.docking_ports) do
+                        if port_data.name == selected_port_name and not port_data.ship_docked then
+                            game.print("Port " .. selected_port_name .. " is now available for ship " .. ship.name .. " - attempting docking...")
+                            ship.waiting_for_open_dock = false
+                            SpaceShip.attempt_docking(ship)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function SpaceShip.check_automatic_behavior()
@@ -1043,31 +1221,26 @@ function SpaceShip.check_automatic_behavior()
         local current_station = schedule.records[schedule.current]
         if not current_station then goto continue end
         if not ship.scanned and not storage.scan_state then
-            SpaceShip.start_scan_ship(ship,60,1)
+            SpaceShip.start_scan_ship(ship, 60, 1)
         elseif not ship.scanned then
             goto continue
         end
 
-        if ship.own_surface or not ship.scanned then goto continue end
-        local all_conditions_met = SpaceShip.check_schedule_conditions(ship)
-        if all_conditions_met then
-            SpaceShip.clone_ship_to_space_platform(ship)
-            local next_station
-            if schedule.records[schedule.current + 1] then
-                schedule.current = schedule.current + 1
-                next_station = schedule.records[schedule.current]
-            else
-                schedule.current = 1
-                next_station = schedule.records[schedule.current]
-            end
-            local platform = ship.hub.surface.platform
-            if platform then
-                platform.schedule = schedule
-                platform.paused = false
-                game.print("Ship " .. ship.name .. " departing to " .. next_station.station)
+        if ship.scanned and ship.docked then
+            local all_conditions_met = SpaceShip.check_schedule_conditions(ship)
+            if all_conditions_met or ship.leave_immediately then
+                ship.leave_immediately = false -- Reset the flag
+                SpaceShip.clone_ship_to_space_platform(ship)
+
+                -- Set up platform to travel to the current station (don't advance yet)
+                local platform = ship.hub.surface.platform
+                if platform then
+                    platform.schedule = schedule
+                    platform.paused = false
+                    game.print("Ship " .. ship.name .. " departing to " .. current_station.station)
+                end
             end
         end
-        --end
         ::continue::
     end
 end
@@ -1103,6 +1276,106 @@ function SpaceShip.connect_adjacent_ports()
     end
 end
 
+function SpaceShip.attempt_docking(ship)
+    local schedule = ship.schedule
+    if not schedule or not schedule.records or not schedule.records[schedule.current] then
+        game.print("Error: Invalid schedule for ship " .. ship.name)
+        return false
+    end
+
+    local target_docking_port
+    local target_docking_port_unit_number
+
+    -- Get the selected port name for the current station
+    local selected_port_name = ship.port_records[schedule.current]
+
+    if selected_port_name then
+        -- Find the port with the specified name
+        for unit_number, port_data in pairs(storage.docking_ports) do
+            if port_data.name == selected_port_name then
+                target_docking_port_unit_number = unit_number
+                target_docking_port = port_data.entity
+
+                if not target_docking_port or not target_docking_port.valid then
+                    game.print("Error: Selected docking port '" ..
+                        selected_port_name ..
+                        "' is no longer valid for station " .. schedule.records[schedule.current].station)
+                    return false
+                end
+                break -- Found the port, exit the loop
+            end
+        end
+
+        if not target_docking_port_unit_number then
+            game.print("Error: Could not find docking port named '" ..
+                selected_port_name .. "' for station " .. schedule.records[schedule.current].station)
+            return false
+        end
+    else
+        -- Fallback: find any available port on the target planet (stations only, not ships)
+        local target_planet = schedule.records[schedule.current].station
+        for unit_number, port_data in pairs(storage.docking_ports) do
+            if port_data.entity.valid and port_data.surface.platform and
+                port_data.surface.platform.space_location and
+                port_data.surface.platform.space_location.name == target_planet and
+                not port_data.ship_docked then
+                -- Check if port is on a station (not on a ship)
+                local port_tile = port_data.surface.get_tile(port_data.position.x, port_data.position.y)
+                if port_tile.name ~= "spaceship-flooring" then
+                    target_docking_port = port_data.entity
+                    target_docking_port_unit_number = unit_number
+                    break
+                end
+            end
+        end
+
+        if not target_docking_port then
+            game.print("Error: No available docking ports found on " .. target_planet)
+            return false
+        end
+    end
+
+    -- Check if the selected port is already occupied or ship data is incomplete
+    if storage.docking_ports[target_docking_port_unit_number].ship_docked or not ship.scanned or
+        not ship.reference_tile or not ship.floor or not ship.docking_port then
+        if not ship.scanned or not ship.reference_tile or not ship.floor or not ship.docking_port then
+            if not storage.scan_state then -- Only start scan if none in progress
+                game.print("Warning: Ship " .. ship.name .. " data incomplete, triggering rescan...")
+                ship.waiting_for_scan = true
+                SpaceShip.start_scan_ship(ship, 60, 1)
+            end
+        elseif storage.docking_ports[target_docking_port_unit_number].ship_docked then
+            game.print("Warning: Selected docking port is already occupied. Ship " .. ship.name .. " waiting.")
+            ship.waiting_for_open_dock = true
+        end
+        return false
+    end
+
+    -- Align the ship's docking port with the target docking port
+    local offset = {
+        x = target_docking_port.position.x - ship.docking_port.position.x + 1,
+        y = target_docking_port.position.y - ship.docking_port.position.y
+    }
+
+    local clone_success = SpaceShip.clone_ship_area(ship, target_docking_port.surface, offset, {})
+    if not clone_success then
+        game.print("Error: Failed to clone ship for docking.")
+        return false
+    end
+
+    ship.surface = target_docking_port.surface
+    ship.own_surface = false
+    ship.traveling = false
+    ship.docked = true
+    ship.waiting_for_open_dock = false
+    ship.waiting_for_scan = false
+    storage.docking_ports[target_docking_port_unit_number].ship_docked = true
+    game.print("Ship " ..
+    ship.name .. " successfully docked at port on " .. target_docking_port.surface.platform.space_location.name)
+
+    return true
+end
+
 function SpaceShip.on_platform_state_change(event)
     local platform = event.platform
     if not platform or not platform.valid then
@@ -1132,52 +1405,10 @@ function SpaceShip.on_platform_state_change(event)
         local old_platform = platform
         platform.paused = true
 
-        local schedule = ship.schedule
-        if not schedule or not schedule.records or not schedule.records[schedule.current] then
-            game.print("Error: Invalid schedule for ship " .. ship.name)
-            return
-        end
-        local target_docking_port
-        local storage_docking_port
-        for key, port in pairs(storage.docking_ports) do
-            if port.name == ship.port_records[schedule.current] then
-                storage_docking_port = key
-                target_docking_port = port.surface.find_entities_filtered({
-                    name = "spaceship-docking-port",
-                    area = {
-                        { x = port.position.x - 5, y = port.position.y - 5 },
-                        { x = port.position.x + 5, y = port.position.y + 5 }
-                    }
-                })[1]
-            end
-        end
+        local success = SpaceShip.attempt_docking(ship)
 
-        if not target_docking_port then
-            game.print("Error: Target docking port not found on surface " .. schedule.records[schedule.current].station)
-            return
-        end
-
-        if storage.docking_ports[storage_docking_port].ship_docked then
-            game.print("Warning: Target docking port already has docked ship " .. ship.port_records[schedule.current])
-            return
-        end
-
-        -- Align the ship's docking port with the target docking port
-        local offset = {
-            x = target_docking_port.position.x - ship.docking_port.position.x + 1,
-            y = target_docking_port.position.y - ship.docking_port.position.y
-        }
-
-        SpaceShip.clone_ship_area(ship, target_docking_port.surface, offset, {})
-
-        ship.surface = target_docking_port.surface
-        ship.own_surface = false
-        ship.traveling = false
-        storage.docking_ports[storage_docking_port].ship_docked = true
-        game.print("Ship " .. ship.name .. " successfully cloned to surface " .. target_docking_port.surface.name)
-
-        -- Delete the old platform surface
-        if old_platform and old_platform.valid then
+        -- Delete the old platform surface only if docking was successful
+        if success and old_platform and old_platform.valid then
             old_platform.destroy(1)
         end
     end
@@ -1292,6 +1523,34 @@ function SpaceShip.station_move_down(ship, station_index)
     end
 end
 
+function SpaceShip.goto_station(ship, station_index)
+    if not ship or not ship.schedule or not ship.schedule.records then
+        game.print("Error: Invalid ship or schedule.")
+        return
+    end
+
+    if not ship.schedule.records[station_index] then
+        game.print("Error: Station index " .. station_index .. " does not exist in the schedule.")
+        return
+    end
+
+    ship.schedule.current = station_index
+    ship.automatic = true         -- Enable automatic mode
+    if ship.docked then
+        ship.leave_immediately = true -- Flag to leave as soon as possible
+    end
+
+    game.print("Ship " ..
+        ship.name ..
+        " current destination set to station " .. station_index .. " and set to automatic mode. Will depart when ready.")
+
+    -- Start scanning if needed
+    if ship.docked and not ship.scanned and not storage.scan_state then
+        game.print("Ship " .. ship.name .. " needs to be scanned before departure. Starting scan...")
+        SpaceShip.start_scan_ship(ship, 60, 1)
+    end
+end
+
 function SpaceShip.condition_move_up(ship, station_index, condition_index)
     if not ship.schedule.records[station_index] or
         not ship.schedule.records[station_index].wait_conditions or
@@ -1367,6 +1626,26 @@ function SpaceShip.auto_manual_changed(ship)
     game.print("Ship " .. ship.name .. " automatic mode is now " .. tostring(ship.automatic))
 end
 
+function SpaceShip.update_all_ship_docking_status()
+    if not storage.spaceships then return end
+
+    for ship_id, ship in pairs(storage.spaceships) do
+        if ship and ship.surface then
+            -- Check if ship is on its own surface (traveling in space)
+            if ship.own_surface then
+                ship.docked = false
+                ship.traveling = true
+            else
+                -- Ship is on a station surface
+                ship.docked = true
+                ship.traveling = false
+            end
+        end
+    end
+
+    game.print("Updated docking status for " .. table_size(storage.spaceships) .. " ships")
+end
+
 function SpaceShip.drop_player_to_planet(ship)
     -- Helper: Check if the ship has the required drop cost
     local function check_drop_cost(ship)
@@ -1387,7 +1666,7 @@ function SpaceShip.drop_player_to_planet(ship)
         local inventory = ship.hub.get_inventory(defines.inventory.chest)
         if not inventory then return false end
         for item, count in pairs(DROP_COST) do
-            local removed = inventory.remove{name=item, count=count}
+            local removed = inventory.remove { name = item, count = count }
             if removed < count then
                 return false
             end
@@ -1509,7 +1788,7 @@ function SpaceShip.drop_items_to_planet(ship)
         local inventory = ship.hub.get_inventory(defines.inventory.chest)
         if not inventory then return false end
         for item, count in pairs(DROP_COST) do
-            local removed = inventory.remove{name=item, count=count}
+            local removed = inventory.remove { name = item, count = count }
             if removed < count then
                 return false
             end
@@ -1565,10 +1844,11 @@ function SpaceShip.drop_items_to_planet(ship)
             end
             -- Remove only the dropped items from inventory
             for _, item in ipairs(cargo_items) do
-                inventory.remove({name = item.name, count = item.count})
+                inventory.remove({ name = item.name, count = item.count })
             end
             if has_cargo then
-                game.print("[color=yellow]Cargo extracted from spaceship control hub: " .. #cargo_items .. " item stacks![/color]")
+                game.print("[color=yellow]Cargo extracted from spaceship control hub: " ..
+                    #cargo_items .. " item stacks![/color]")
             end
         end
     end
@@ -1663,9 +1943,11 @@ function SpaceShip.process_pending_drops()
             local drop_pod = drop_data.drop_pod
             -- Handle player drop
             if player and player.valid and target_surface and target_surface.valid then
-                local landing_position = target_surface.find_non_colliding_position("character", {0, 0}, 100, 1) or {0, 0}
+                local landing_position = target_surface.find_non_colliding_position("character", { 0, 0 }, 100, 1) or
+                    { 0, 0 }
                 player.teleport(landing_position, target_surface)
-                game.print("[color=green]Player " .. player.name .. " has landed on " .. target_surface.name .. "![/color]")
+                game.print("[color=green]Player " ..
+                    player.name .. " has landed on " .. target_surface.name .. "![/color]")
             end
             -- Handle cargo drop
             if drop_data.has_cargo and drop_data.cargo_items and #drop_data.cargo_items > 0 and target_surface and target_surface.valid then
@@ -1695,13 +1977,13 @@ function SpaceShip.process_pending_drops()
                         if pod_position then break end
                     end
                     if not pod_position then
-                        pod_position = {x = pod_index * 5, y = pod_index * 5}
+                        pod_position = { x = pod_index * 5, y = pod_index * 5 }
                     end
-                    local pod_entity_types = {"cargo-pod-container", "steel-chest"}
+                    local pod_entity_types = { "cargo-pod-container", "steel-chest" }
                     local cargo_pod = nil
                     for _, entity_type in ipairs(pod_entity_types) do
                         local success, result = pcall(function()
-                            return target_surface.create_entity{
+                            return target_surface.create_entity {
                                 name = entity_type,
                                 position = pod_position,
                                 force = (player and player.force) or "player"
@@ -1717,17 +1999,20 @@ function SpaceShip.process_pending_drops()
                         local pod_inventory = cargo_pod.get_inventory(defines.inventory.chest)
                         if pod_inventory then
                             for _, item_data in ipairs(item_chunk) do
-                                local item_to_insert = {name = item_data.name, count = item_data.count}
+                                local item_to_insert = { name = item_data.name, count = item_data.count }
                                 if item_data.quality then item_to_insert.quality = item_data.quality end
                                 if item_data.health then item_to_insert.health = item_data.health end
                                 if item_data.durability then item_to_insert.durability = item_data.durability end
                                 if item_data.ammo then item_to_insert.ammo = item_data.ammo end
-                                if item_data.custom_description then item_to_insert.custom_description = item_data.custom_description end
+                                if item_data.custom_description then
+                                    item_to_insert.custom_description = item_data
+                                        .custom_description
+                                end
                                 pod_inventory.insert(item_to_insert)
                             end
                         end
                         pcall(function()
-                            target_surface.create_entity{
+                            target_surface.create_entity {
                                 name = "explosion",
                                 position = cargo_pod.position,
                                 force = cargo_pod.force
@@ -1736,7 +2021,9 @@ function SpaceShip.process_pending_drops()
                     end
                 end
                 if successful_pods > 0 then
-                    game.print("[color=green]" .. successful_pods .. "/" .. total_pods .. " cargo pods have landed on " .. target_surface.name .. "![/color]")
+                    game.print("[color=green]" ..
+                        successful_pods ..
+                        "/" .. total_pods .. " cargo pods have landed on " .. target_surface.name .. "![/color]")
                 else
                     game.print("[color=red]Failed to create cargo pods on " .. target_surface.name .. "![/color]")
                 end
