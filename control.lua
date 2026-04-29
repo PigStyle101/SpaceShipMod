@@ -1,8 +1,42 @@
-local SpaceShipGuis = require("SpaceShipGuisScript")
-local SpaceShipFunctions = require("SpaceShipFunctionsScript")
+local SpaceShipGuis = require("shipGui/SpaceShipGuisScript")
 local SpaceShip = require("SpaceShip")
 local Stations = require("Stations")
-local schedule_gui = require("__ship-gui__.spaceship_gui.spaceship_gui")
+local schedule_gui = require("shipGui/spaceship_gui")
+local ship_gui_control = require("shipGui/gui_controller")
+
+local function resolve_ship_by_hub_entity(hub_entity)
+    if not (hub_entity and hub_entity.valid and hub_entity.name == "spaceship-control-hub") then
+        return nil
+    end
+
+    storage.spaceships = storage.spaceships or {}
+
+    for _, value in pairs(storage.spaceships) do
+        if value and value.hub and value.hub.valid and value.hub.unit_number == hub_entity.unit_number then
+            return value
+        end
+    end
+
+    local tag_id = hub_entity.tags and tonumber(hub_entity.tags.id)
+    if tag_id and storage.spaceships[tag_id] then
+        local ship = storage.spaceships[tag_id]
+        ship.hub = hub_entity
+        return ship
+    end
+
+    for _, value in pairs(storage.spaceships) do
+        if value and (not value.hub or not value.hub.valid) and value.surface and value.surface.valid and
+            value.surface.index == hub_entity.surface.index then
+            value.hub = hub_entity
+            local tags = hub_entity.tags or {}
+            tags.id = value.id
+            hub_entity.tags = tags
+            return value
+        end
+    end
+
+    return nil
+end
 
 
 -- Initialize storage tables
@@ -11,6 +45,9 @@ storage.highlight_data = storage.highlight_data or {} -- Stores highlight data f
 -- Initialize mod when first loaded
 script.on_init(function()
     storage.highlight_data = storage.highlight_data or {}
+    storage.recent_rocket_arrival_tick = storage.recent_rocket_arrival_tick or {}
+    storage.platform_hub_action_tick = storage.platform_hub_action_tick or {}
+    storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
     Stations.init()
     SpaceShip.update_all_ship_docking_status()
 end)
@@ -18,83 +55,30 @@ end)
 -- Handle configuration changes (mod updates)
 script.on_configuration_changed(function()
     storage.highlight_data = storage.highlight_data or {}
+    storage.recent_rocket_arrival_tick = storage.recent_rocket_arrival_tick or {}
+    storage.platform_hub_action_tick = storage.platform_hub_action_tick or {}
+    storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
     Stations.init()
     SpaceShip.update_all_ship_docking_status()
 end)
 
--- Get the event IDs from gui mod
-local ship_gui_events
+script.on_event(defines.events.on_cargo_pod_finished_descending, function(event)
+    if not event then return end
 
--- Register events and their handlers
-local function register_events()
-    -- Get events when needed
-    if not ship_gui_events then
-        ship_gui_events = remote.call("ship-gui", "get_event_ids")
-    end
+    if not event.player_index then return end
+    if not event.launched_by_rocket then return end
 
-    -- Register handlers for each event type
-    if ship_gui_events then
-        if ship_gui_events.on_station_selected then
-            script.on_event(ship_gui_events.on_station_selected, SpaceShipGuis.on_station_selected)
-        end
-        if ship_gui_events.on_station_move_up then
-            script.on_event(ship_gui_events.on_station_move_up, SpaceShipGuis.on_station_move_up)
-        end
-        if ship_gui_events.on_station_move_down then
-            script.on_event(ship_gui_events.on_station_move_down, SpaceShipGuis.on_station_move_down)
-        end
-        if ship_gui_events.on_station_dock_selected then
-            script.on_event(ship_gui_events.on_station_dock_selected, SpaceShipGuis.on_station_dock_selected)
-        end
-        if ship_gui_events.on_station_delete then
-            script.on_event(ship_gui_events.on_station_delete, SpaceShipGuis.on_station_delete)
-        end
-        if ship_gui_events.on_station_unload_check_changed then
-            script.on_event(ship_gui_events.on_station_unload_check_changed,
-                SpaceShipGuis.on_station_unload_check_changed)
-        end
-        if ship_gui_events.on_station_condition_add then
-            script.on_event(ship_gui_events.on_station_condition_add, SpaceShipGuis.on_station_condition_add)
-        end
-        if ship_gui_events.on_station_goto then
-            script.on_event(ship_gui_events.on_station_goto, SpaceShipGuis.on_station_goto)
-        end
-        if ship_gui_events.on_condition_move_up then
-            script.on_event(ship_gui_events.on_condition_move_up, SpaceShipGuis.on_condition_move_up)
-        end
-        if ship_gui_events.on_condition_move_down then
-            script.on_event(ship_gui_events.on_condition_move_down, SpaceShipGuis.on_condition_move_down)
-        end
-        if ship_gui_events.on_condition_delete then
-            script.on_event(ship_gui_events.on_condition_delete, SpaceShipGuis.on_condition_delete)
-        end
-        if ship_gui_events.on_condition_constant_confirmed then
-            script.on_event(ship_gui_events.on_condition_constant_confirmed,
-                SpaceShipGuis.on_condition_constant_confirmed)
-        end
-        if ship_gui_events.on_comparison_sign_changed then
-            script.on_event(ship_gui_events.on_comparison_sign_changed, SpaceShipGuis.on_comparison_sign_changed)
-        end
-        if ship_gui_events.on_bool_changed then
-            script.on_event(ship_gui_events.on_bool_changed, SpaceShipGuis.on_bool_changed)
-        end
-        if ship_gui_events.on_first_signal_selected then
-            script.on_event(ship_gui_events.on_first_signal_selected, SpaceShipGuis.on_first_signal_selected)
-        end
-        if ship_gui_events.on_ship_rename_confirmed then
-            script.on_event(ship_gui_events.on_ship_rename_confirmed, SpaceShipGuis.on_ship_rename_confirmed)
-        end
-        if ship_gui_events.on_ship_paused_unpaused then
-            script.on_event(ship_gui_events.on_ship_paused_unpaused, SpaceShipGuis.on_ship_paused_unpaused)
-        end
-    end
-end
-
-script.on_init(register_events)
-script.on_load(register_events)
-script.on_configuration_changed(register_events)
+    storage.recent_rocket_arrival_tick = storage.recent_rocket_arrival_tick or {}
+    storage.recent_rocket_arrival_tick[event.player_index] = game.tick
+end)
 
 script.on_event(defines.events.on_gui_click, function(event)
+    local element = event.element
+    if element and element.valid and element.tags and element.tags.filter and element.tags.filter.owner == "ship-gui" then
+        ship_gui_control.on_gui_click(event)
+        return
+    end
+
     SpaceShipGuis.handle_button_click(event)
 end)
 
@@ -130,19 +114,22 @@ script.on_event(defines.events.on_space_platform_mined_entity, function(event)
     SpaceShip.handle_mined_entity(event.entity)
 end)
 
+script.on_event(defines.events.on_entity_settings_pasted, function(event)
+    SpaceShip.handle_entity_settings_pasted(event)
+end)
+
 script.on_event(defines.events.on_gui_opened, function(event)
     local player = game.get_player(event.player_index)
+    if not player or not player.valid then return end
     local opened_entity = event.entity
     local ship
 
     if opened_entity and opened_entity.valid and opened_entity.name == "spaceship-control-hub" then
-        for _, value in pairs(storage.spaceships) do
-            if value.hub.unit_number == opened_entity.unit_number then
-                ship = storage.spaceships[value.id]
-            end
+        ship = resolve_ship_by_hub_entity(opened_entity)
+        if ship then
+            SpaceShipGuis.create_spaceship_gui(player, ship)
+            SpaceShipGuis.gui_maker_handler(ship, event.player_index)
         end
-        SpaceShipGuis.create_spaceship_gui(player, ship)
-        SpaceShipGuis.gui_maker_handler(ship, event.player_index)
     end
 
     if event.entity and event.entity.name == "spaceship-docking-port" then
@@ -157,6 +144,19 @@ end)
 
 script.on_event(defines.events.on_tick, function(event)
     storage.highlight_data = storage.highlight_data or {}
+    storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
+
+    if #storage.temp_platform_hubs_cleanup > 0 then
+        for i = #storage.temp_platform_hubs_cleanup, 1, -1 do
+            local cleanup = storage.temp_platform_hubs_cleanup[i]
+            if not cleanup.entity or not cleanup.entity.valid or game.tick >= cleanup.cleanup_tick then
+                if cleanup.entity and cleanup.entity.valid then
+                    cleanup.entity.destroy()
+                end
+                table.remove(storage.temp_platform_hubs_cleanup, i)
+            end
+        end
+    end
 
     -- Handle clearing hights after the timer expires
     if storage.scan_highlight_expire_tick and game.tick >= storage.scan_highlight_expire_tick then
@@ -228,21 +228,23 @@ script.on_event(defines.events.on_tick, function(event)
         }
     end
     ::continue::
-    if storage.scan_state and game.tick % 10 == storage.scan_state.tick_amount then
+    if storage.scan_state then
         SpaceShip.continue_scan_ship()
     end
+
+    SpaceShip.process_clone_job_queue()
+    SpaceShip.process_clone_cleanup_queue()
 
     if game.tick % 60 == 0 then
         for _, ship in pairs(storage.spaceships or {}) do
             local player = ship.player
-            if player.gui.relative["schedule-container"] then
-                signals = SpaceShip.read_circuit_signals(ship.hub)
-                values = SpaceShip.get_progress_values(ship, signals)
-                for key, value in pairs(values) do
-                    schedule_gui.update_station_progress(key, value, player)
-                end
+            if player and player.valid and player.gui and player.gui.relative and player.gui.relative["schedule-container"] and ship.hub and ship.hub.valid then
+                local signals = SpaceShip.read_circuit_signals(ship.hub)
+                local values = SpaceShip.get_progress_values(ship, signals)
+                schedule_gui.update_all_station_progress(values, player)
             end
         end
+        Stations.enforce_station_hub_controls()
         SpaceShip.check_automatic_behavior()
         SpaceShip.check_waiting_ships_for_dock_availability()
     end
@@ -258,6 +260,7 @@ script.on_event(defines.events.on_tick, function(event)
             end
         end
         storage.entities_to_restore = nil
+        storage.entities_to_restore_lookup = nil
         storage.entities_to_restore_tick = nil
     end
 end)
@@ -269,27 +272,32 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
     local vehicle = event.entity
     if not vehicle or not vehicle.valid then return end
 
-    local entered = player.vehicle ~= nil
-    local riding_state = player.riding_state
-
     if vehicle.name == "spaceship-control-hub-car" then
         local search_area = {
             { x = vehicle.position.x - 50, y = vehicle.position.y - 50 }, -- Define a reasonable search area around the cloned ship
             { x = vehicle.position.x + 50, y = vehicle.position.y + 50 }
         }
-        hub = event.entity.surface.find_entities_filtered { area = search_area, name = "spaceship-control-hub" }
-        if not hub or #hub == 0 then return end
+        local hubs = event.entity.surface.find_entities_filtered { area = search_area, name = "spaceship-control-hub" }
+        if not hubs or #hubs == 0 or not (hubs[1] and hubs[1].valid) then return end
 
-        local ship
-        for _, value in pairs(storage.spaceships) do
-            if value.hub.unit_number == hub[1].unit_number then
-                ship = storage.spaceships[value.id]
+        local ship = resolve_ship_by_hub_entity(hubs[1])
+        if not ship then
+            for _, value in pairs(storage.spaceships or {}) do
+                if value and value.player and value.player.valid and value.player.index == player.index and
+                    (value.is_cloning or value.clone_job_active) then
+                    ship = value
+                    break
+                end
             end
+        end
+        if not ship then return end
+
+        if ship.is_cloning or ship.clone_job_active then
+            return
         end
 
         -- Player entered/exited the cockpit
         if player.vehicle then
-
             ship.player_in_cockpit = player
             -- Player entered the cockpit
             --SpaceShipGuis.create_spaceship_gui(player)
@@ -297,8 +305,26 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
             ship.player_in_cockpit = nil
         end
     elseif vehicle.name == "space-platform-hub" then
-        player.leave_space_platform()
-        player.set_controller ({ type = defines.controllers.character,character = player.character })
+        storage.recent_rocket_arrival_tick = storage.recent_rocket_arrival_tick or {}
+        storage.platform_hub_action_tick = storage.platform_hub_action_tick or {}
+
+        local last_action_tick = storage.platform_hub_action_tick[event.player_index]
+        if last_action_tick and (game.tick - last_action_tick) <= 30 then
+            return
+        end
+
+        local recent_rocket_tick = storage.recent_rocket_arrival_tick[event.player_index]
+        local just_arrived_by_rocket = recent_rocket_tick and (game.tick - recent_rocket_tick) <= 600
+
+        if just_arrived_by_rocket then
+            player.leave_space_platform()
+            player.set_controller({ type = defines.controllers.character, character = player.character })
+            storage.recent_rocket_arrival_tick[event.player_index] = nil
+            storage.platform_hub_action_tick[event.player_index] = game.tick
+        else
+            SpaceShip.drop_player_from_platform_hub(player, vehicle)
+            storage.platform_hub_action_tick[event.player_index] = game.tick
+        end
     elseif vehicle.name == "cargo-pod" then
         if not Stations.has_spaceship_armor(player) then
             player.driving = false
@@ -308,6 +334,12 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
 end)
 
 script.on_event(defines.events.on_gui_text_changed, function(event)
+    local element = event.element
+    if element and element.valid and element.tags and element.tags.filter and element.tags.filter.owner == "ship-gui" then
+        ship_gui_control.on_gui_text_changed(event)
+        return
+    end
+
     if event.element.name == "dock-name-input" or event.element.name == "dock-limit-input" then
         SpaceShipGuis.handle_text_changed_docking_port(event)
     end
@@ -321,11 +353,12 @@ script.on_event(defines.events.on_selected_entity_changed, function(event)
     -- Check if the player is hovering over the spaceship-control-hub
     if selected_entity and selected_entity.valid and selected_entity.name == "spaceship-control-hub" then
         storage.spaceships = storage.spaceships or {}
-        local ship
-        for _, value in pairs(storage.spaceships) do
-            if value.hub.unit_number == selected_entity.unit_number then
-                ship = storage.spaceships[value.id]
+        local ship = resolve_ship_by_hub_entity(selected_entity)
+        if not ship then
+            if player.gui.screen["hovering_gui"] then
+                player.gui.screen["hovering_gui"].destroy()
             end
+            return
         end
         -- Create a GUI if it doesn't already exist
         if not player.gui.screen["hovering_gui"] then
@@ -365,31 +398,38 @@ script.on_event(defines.events.on_space_platform_changed_state, function(event)
     game.print(plat.name .. " has been changed state from:" .. event.old_state .. ",to:" .. plat.state)
     if string.find(plat.name, "-ship") and event.platform.state == defines.space_platform_state.waiting_at_station then
         if event.old_state == defines.space_platform_state.on_the_path then
-            hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
-            local ship
-            for _, value in pairs(storage.spaceships) do
-                if value.hub.unit_number == hub[1].unit_number then
-                    ship = storage.spaceships[value.id]
-                end
+            local hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
+            if not hub or not hub[1] or not hub[1].valid then
+                return
             end
+            local ship = resolve_ship_by_hub_entity(hub[1])
+            if not ship then return end
             ship.planet_orbiting = plat.space_location.name
             SpaceShip.on_platform_state_change(event)
         end
     elseif string.find(plat.name, "-ship") and event.platform.state == defines.space_platform_state.on_the_path then
-        hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
-        local ship
-        for _, value in pairs(storage.spaceships) do
-            if value.hub.unit_number == hub[1].unit_number then
-                ship = storage.spaceships[value.id]
-            end
+        local hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
+        if not hub or not hub[1] or not hub[1].valid then
+            return
         end
+        local ship = resolve_ship_by_hub_entity(hub[1])
+        if not ship then return end
         ship.planet_orbiting = "none"
     end
 end)
 
 script.on_event(defines.events.on_entity_cloned, function(event)
     if event.source.name == "spaceship-control-hub" then
-        game.print("Spaceship control hub cloned!")
+        local source_hub_is_tracked_ship = false
+        for _, value in pairs(storage.spaceships or {}) do
+            if value.hub and value.hub.valid and value.hub.unit_number == event.source.unit_number then
+                source_hub_is_tracked_ship = true
+                break
+            end
+        end
+        if source_hub_is_tracked_ship then
+            game.print("Spaceship control hub cloned!")
+        end
     end
     SpaceShip.handle_cloned_storage_update(event)
 end)
@@ -399,6 +439,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
     if not player or not player.valid then return end
 
     local closed_entity = event.entity
+    local closed_element = event.element
 
     -- If a spaceship control hub GUI was closed, close all related GUIs
     if closed_entity and closed_entity.valid and closed_entity.name == "spaceship-control-hub" then
@@ -419,7 +460,8 @@ script.on_event(defines.events.on_gui_closed, function(event)
             end
 
             -- Close the schedule GUI
-            local schedule_gui = player.gui.relative["spaceship-controller-schedual-gui-" .. ship.name]
+            local schedule_gui = player.gui.relative["spaceship-controller-schedule-gui-" .. ship.name] or
+                player.gui.relative["spaceship-controller-schedual-gui-" .. ship.name]
             if schedule_gui and schedule_gui.valid then
                 schedule_gui.destroy()
                 ship.schedule_gui = nil
@@ -442,6 +484,14 @@ script.on_event(defines.events.on_gui_closed, function(event)
         if player.gui.screen["docking-port-gui"] then
             player.gui.screen["docking-port-gui"].destroy()
         end
+    end
+
+    -- Close docking port GUI when custom GUI is closed via Escape/E.
+    if closed_element and closed_element.valid and closed_element.name == "docking-port-gui" then
+        if player.gui.screen["docking-port-gui"] and player.gui.screen["docking-port-gui"].valid then
+            player.gui.screen["docking-port-gui"].destroy()
+        end
+        storage.selected_docking_port = nil
     end
 
     -- Close dock confirmation GUI when any GUI is closed (it's a modal dialog)

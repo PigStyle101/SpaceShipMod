@@ -96,6 +96,8 @@ controlHubRecipe.name = "spaceship-control-hub"
 controlHubRecipe.localised_name = "Spaceship Control Hub"
 controlHubRecipe.ingredients = { { type = "item", name = "iron-plate", amount = 1 } }
 controlHubRecipe.results = { { type = "item", name = "spaceship-control-hub", amount = 1 } }
+controlHubRecipe.main_product = "spaceship-control-hub"
+controlHubRecipe.hidden = false
 controlHubRecipe.enabled = false
 
 controlHubItemCar.name = "spaceship-control-hub-car"
@@ -159,6 +161,11 @@ if space_foundation and refined_concrete then
 
     -- Use refined concrete graphics (clean grey appearance, no dirt transitions)
     spaceship_flooring_tile.variants = table.deepcopy(refined_concrete.variants)
+    spaceship_flooring_tile.allows_being_covered = true
+end
+
+if data.raw.tile["space-platform-foundation"] then
+    data.raw.tile["space-platform-foundation"].allows_being_covered = true
 end
 
 -- =============================================================================
@@ -174,7 +181,8 @@ data:extend({
         localised_description = "Main control hub for the spaceship.",
         placeable_by = data.raw["item"]["spaceship-control-hub"],
         flags = { "placeable-neutral", "player-creation", "not-rotatable" },
-        icon = data.raw["space-platform-starter-pack"]["space-platform-starter-pack"].icon,
+        icon = "__SpaceShipMod__/control-hub.png",
+        icon_size = 500,
         circuit_connector = data.raw["container"]["iron-chest"].circuit_connector,
         circuit_wire_max_distance = data.raw["container"]["iron-chest"].circuit_wire_max_distance,
         draw_circuit_wires = true,
@@ -223,6 +231,8 @@ data:extend({
         stack_size = 1,
         weight = 1 * tons,
         surface = "space-ship-surface",
+        hidden = true,
+        hidden_in_factoriopedia = true,
         trigger =
         {
             {
@@ -244,22 +254,6 @@ data:extend({
         initial_items = { { type = "item", name = "spaceship-flooring", amount = 10 } },
         create_electric_network = true,
     },
-    --[[
-    {
-        type = "recipe",
-        name = "space-ship-starter-pack",
-        localised_name = "Space Platform Starter Pack",
-        ingredients = { { type = "item", name = "iron-plate", amount = 1 } },
-        hidden = true,
-        enabled = false,
-        results = { { type = "item", name = "space-ship-starter-pack", amount = 10 } },
-        main_product = "space-ship-starter-pack",
-        icon = "__space-age__/graphics/icons/thruster.png",
-        subgroup = "planets",
-        order = "a[space-platform]",
-        category = "crafting",
-    },
-    ]]--
     -- Custom Space Ship Surface
     {
         type = "surface",
@@ -335,6 +329,63 @@ data:extend({
 -- Add the custom spaceship flooring tile if it was created successfully
 if spaceship_flooring_tile then
     data:extend({ spaceship_flooring_tile })
+end
+
+-- Allow quick replacement between space-platform-foundation <-> spaceship-flooring
+local function ensure_tile_condition(item_name, tile_name)
+    local item = data.raw.item[item_name]
+    if not item or not item.place_as_tile then return end
+
+    -- If tile_condition is absent, seed it with empty-space so normal space placement remains valid.
+    if not item.place_as_tile.tile_condition then
+        item.place_as_tile.tile_condition = { "empty-space" }
+    end
+
+    for _, existing in pairs(item.place_as_tile.tile_condition) do
+        if existing == tile_name then
+            return
+        end
+    end
+
+    table.insert(item.place_as_tile.tile_condition, tile_name)
+end
+
+ensure_tile_condition("space-platform-foundation", "space-platform-foundation")
+ensure_tile_condition("space-platform-foundation", "spaceship-flooring")
+ensure_tile_condition("spaceship-flooring", "empty-space")
+ensure_tile_condition("spaceship-flooring", "space-platform-foundation")
+ensure_tile_condition("spaceship-flooring", "spaceship-flooring")
+
+-- =============================================================================
+-- BASE GAME SPACE PLATFORM LOCALISATION OVERRIDES
+-- =============================================================================
+
+if data.raw["space-platform-starter-pack"] and data.raw["space-platform-starter-pack"]["space-platform-starter-pack"] then
+    data.raw["space-platform-starter-pack"]["space-platform-starter-pack"].localised_name = "Space Station Starter Pack"
+end
+
+if data.raw["space-platform-hub"] and data.raw["space-platform-hub"]["space-platform-hub"] then
+    data.raw["space-platform-hub"]["space-platform-hub"].localised_name = "Space Station Control Hub"
+end
+
+if data.raw.item and data.raw.item["space-platform-hub"] then
+    data.raw.item["space-platform-hub"].localised_name = "Space Station Control Hub"
+end
+
+if data.raw.recipe and data.raw.recipe["space-platform-hub"] then
+    data.raw.recipe["space-platform-hub"].localised_name = "Space Station Control Hub"
+end
+
+if data.raw.item and data.raw.item["space-platform-foundation"] then
+    data.raw.item["space-platform-foundation"].localised_name = "Space Station Platform"
+end
+
+if data.raw.recipe and data.raw.recipe["space-platform-foundation"] then
+    data.raw.recipe["space-platform-foundation"].localised_name = "Space Station Platform"
+end
+
+if data.raw.tile and data.raw.tile["space-platform-foundation"] then
+    data.raw.tile["space-platform-foundation"].localised_name = "Space Station Platform"
 end
 
 -- =============================================================================

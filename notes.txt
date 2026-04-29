@@ -1,19 +1,15 @@
 custom gui that uses space hub inventory, that way stuff is hidden
 
 Current bugs: 
--storage.spaceship losses a space ship when 2 are placed, causeing crash when hovering ship that is not storred
--Dock waiting not working
+
 
 need to do: -=important,--=less important
--add check to not let ship go into auto if there is not a port selected
--add docking port ship limit logic
--add more conditions (puke)
--Adjust the clone function to run over multiple ticks when the player is not on the ship (don't want your 200 ships dropping your UPS to 1 when the big logistics get going)
+-make it so player can shoot astroids
+-working on scan time tunning and clone tunning
+-add more conditions
 
---fix dock final (not spawning entities)
---add check to takeoff to make sure platform is on its own surface
+--add copy past via shift click and click to docking ports to copy thier name and ship limit
 --change the gui captions to the ones in core/locale/en/core.cfg were viable
---spell check,Code clean up and restructuring
 --Change to allow robots in space? (that way everything doesn't have to be belted)
 
 Suggestions:

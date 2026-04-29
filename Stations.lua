@@ -39,8 +39,8 @@ function Stations.handle_platform_state_change(event)
     local old_state = event.old_state
     local new_state = platform.state
     
-    -- Check for state change from 0 (waiting for starter pack) to 8 (ready)
-    if old_state == 0 and new_state == 8 then
+    -- Check for state change from 1 (waiting for starter pack) to 7 (ready)
+    if old_state == 1 and new_state == 7 then
         -- Skip if this is a ship platform (should have been renamed by SpaceShip.lua)
         if is_ship_platform(platform.name) then
             return -- Ships are handled separately
@@ -100,6 +100,56 @@ function Stations.init()
     -- Any initialization logic can go here
     if not storage.stations then
         storage.stations = {}
+    end
+    storage.station_control_state = storage.station_control_state or {}
+end
+
+-- Prevent station platforms from being manually scheduled or set to automatic travel.
+-- This only targets "-station" platforms and does not touch "-ship" logic.
+function Stations.enforce_station_hub_controls()
+    storage.station_control_state = storage.station_control_state or {}
+
+    for _, force in pairs(game.forces) do
+        for _, platform in pairs(force.platforms) do
+            if platform and platform.valid and is_station_platform(platform.name) then
+                local key = force.name .. "/" .. platform.name
+                local state = storage.station_control_state[key] or {
+                    warned_schedule = false,
+                    warned_auto = false
+                }
+
+                local has_schedule_records = false
+                local current_schedule = platform.schedule
+                if type(current_schedule) == "table" then
+                    local records = rawget(current_schedule, "records")
+                    if type(records) == "table" and #records > 0 then
+                        has_schedule_records = true
+                    end
+                end
+
+                if has_schedule_records then
+                    platform.schedule = nil
+                    if not state.warned_schedule then
+                        game.print("[color=red]Station platform schedules are disabled. Use spaceship schedules only.[/color]")
+                        state.warned_schedule = true
+                    end
+                else
+                    state.warned_schedule = false
+                end
+
+                if not platform.paused then
+                    platform.paused = true
+                    if not state.warned_auto then
+                        game.print("[color=red]Station platforms cannot be set to automatic travel.[/color]")
+                        state.warned_auto = true
+                    end
+                else
+                    state.warned_auto = false
+                end
+
+                storage.station_control_state[key] = state
+            end
+        end
     end
 end
 

@@ -7,7 +7,6 @@
   "description": "Prevents engines on space platforms and creates a new multiblock spaceship from a space platform hub controller.",
   "dependencies": [
     "base >= 1.1.0",
-    "space-age",
-    "ship-gui"
+    "space-age"
   ]
 }
