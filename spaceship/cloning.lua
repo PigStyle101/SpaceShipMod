@@ -2,7 +2,6 @@ return function(SpaceShip)
     local UNATTENDED_CLONE_CLEANUP_TILE_BUDGET = 120
     local UNATTENDED_CLONE_CLEANUP_ENTITY_BUDGET = 60
     local UNATTENDED_CLONE_BRUSH_CHUNK_SIZE = 10
-    local ENABLE_WIRE_SNAPSHOT_DEBUG = true
     local CONDITION_ENTITY_TYPES = { "inserter", "transport-belt", "underground-belt", "splitter", "assembling-machine", "furnace" }
 
     local function is_player_attending_ship(ship)
@@ -144,10 +143,36 @@ return function(SpaceShip)
     local function free_previous_dock_port(ship)
         if ship.docked_port_unit_number and storage.docking_ports and storage.docking_ports[ship.docked_port_unit_number] then
             storage.docking_ports[ship.docked_port_unit_number].ship_docked = false
-            game.print("Port freed: " ..
-                ((storage.docking_ports[ship.docked_port_unit_number] and storage.docking_ports[ship.docked_port_unit_number].name) or
-                    "unnamed") .. " is now available")
             ship.docked_port_unit_number = nil
+        end
+    end
+
+    local function transfer_hub_inventory(source_hub, destination_hub)
+        if not (source_hub and source_hub.valid and destination_hub and destination_hub.valid) then return end
+
+        local source_inventory = source_hub.get_inventory(defines.inventory.chest)
+        local destination_inventory = destination_hub.get_inventory(defines.inventory.chest)
+        if not (source_inventory and destination_inventory) then return end
+
+        local remaining_item_count = 0
+
+        for i = 1, #source_inventory do
+            local stack = source_inventory[i]
+            if stack and stack.valid_for_read then
+                local inserted = destination_inventory.insert(stack)
+                if inserted > 0 then
+                    stack.count = stack.count - inserted
+                end
+
+                if stack.valid_for_read then
+                    remaining_item_count = remaining_item_count + stack.count
+                end
+            end
+        end
+
+        if remaining_item_count > 0 then
+            game.print("Warning: " .. remaining_item_count ..
+                " hub items could not be transferred during clone (destination hub inventory is full).")
         end
     end
 
@@ -346,24 +371,6 @@ return function(SpaceShip)
         end
 
         return snapshot
-    end
-
-    local function wire_snapshot_debug_print(ship_name, mode, stats)
-        if not ENABLE_WIRE_SNAPSHOT_DEBUG then return end
-        if not stats then return end
-
-        game.print(
-            "Wire snapshot [" .. (mode or "unknown") .. "] " .. (ship_name or "?") ..
-            " captured(circuits=" .. tostring(stats.captured_circuits or 0) .. ")" ..
-            " mapped=" .. tostring(stats.mapped_entities or 0) .. "/" .. tostring(stats.total_entities or 0) ..
-            " circuit(applied=" .. tostring(stats.applied_circuits or 0) .. ", missing=" .. tostring(stats.missing_circuits or 0) .. ", failed=" .. tostring(stats.failed_circuits or 0) .. ")"
-        )
-
-        if stats.sample_errors and #stats.sample_errors > 0 then
-            for i = 1, #stats.sample_errors do
-                game.print("Wire snapshot error sample [" .. (mode or "unknown") .. "] " .. tostring(stats.sample_errors[i]))
-            end
-        end
     end
 
     local function apply_ship_wire_snapshot(snapshot, dest_surface, offset)
@@ -567,6 +574,8 @@ return function(SpaceShip)
         end
 
         if job.phase == "finalize" then
+            local source_hub_before_swap = ship.hub
+
             eject_cockpit_occupants(job.character_data, job.src_surface)
 
             for _, vehicle in pairs(job.vehicles or {}) do
@@ -638,17 +647,18 @@ return function(SpaceShip)
                     end
                 end
                 if not new_hub then
-                    game.print("Warning: Deferred clone finalization waiting for destination hub on ship " .. ship.name)
                     return
                 end
+
+                transfer_hub_inventory(source_hub_before_swap, new_hub)
+
                 ship.hub = new_hub
                 local tags = ship.hub.tags or {}
                 tags.id = ship.id
                 ship.hub.tags = tags
             end
 
-            local wire_stats = apply_ship_wire_snapshot(job.wire_snapshot, job.dest_surface, job.offset)
-            wire_snapshot_debug_print(ship.name, "deferred", wire_stats)
+            apply_ship_wire_snapshot(job.wire_snapshot, job.dest_surface, job.offset)
 
             ship.is_cloning = false
             ship.clone_job_active = nil
@@ -665,11 +675,6 @@ return function(SpaceShip)
             if platform then
                 platform.schedule = ship.schedule
                 platform.paused = false
-                local schedule = ship.schedule
-                local current_station = schedule and schedule.records and schedule.records[schedule.current] or nil
-                if current_station then
-                    game.print("Ship " .. ship.name .. " departing to " .. current_station.station)
-                end
             end
 
             SpaceShip.start_scan_ship(ship)
@@ -1149,8 +1154,7 @@ return function(SpaceShip)
             end
         end
 
-        local wire_stats = apply_ship_wire_snapshot(wire_snapshot, dest_surface, offset)
-        wire_snapshot_debug_print(ship.name, "immediate", wire_stats)
+        apply_ship_wire_snapshot(wire_snapshot, dest_surface, offset)
 
         ship.is_cloning = false
         ship.surface_lock_timeout = tick + 60

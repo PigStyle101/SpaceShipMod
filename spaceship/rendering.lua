@@ -119,9 +119,6 @@ return function(SpaceShip)
             end
         end
 
-        game.print("Total Renders: " ..
-            #combined_renders ..
-            " (combined from " .. table_size(tiles) .. " tiles)")
         return combined_renders
     end
 end

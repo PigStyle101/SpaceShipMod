@@ -38,14 +38,13 @@ A comprehensive spaceship construction and automation mod for Factorio's Space A
 
 - **Factorio**: Version 1.1.0 or higher
 - **Space Age DLC**: Required for space platform functionality
-- **Ship GUI Mod**: External dependency for advanced GUI features
+- **Integrated GUI**: Ship scheduling and controls are built into this mod
 
 ## Installation
 
 1. Download the mod from the Factorio mod portal
 2. Place in your Factorio mods folder
 3. Ensure you have the Space Age DLC enabled
-4. Install the required Ship GUI dependency mod
 
 ## Getting Started
 

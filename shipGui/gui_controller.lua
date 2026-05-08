@@ -17,8 +17,6 @@ local function emit(handler_name, payload)
     local handler = SpaceShipGuis[handler_name]
     if handler then
         handler(payload)
-    else
-        game.print("Ship GUI handler missing: " .. handler_name)
     end
 end
 
@@ -261,15 +259,11 @@ callbacks.on_switch["paused"] = function(event)
     local state = element.switch_state
     local tags = element.tags
     local is_automatic = state == "left"
-    local is_paused = state == "right"
     emit("on_ship_paused_unpaused", {
         ship_id = tags.ship_id,
         state = state,
         switch_state = state,
         automatic = is_automatic,
-        paused = is_paused,
-        is_automatic = is_automatic,
-        is_paused = is_paused,
         player_index = event.player_index
     })
 
@@ -333,7 +327,6 @@ callbacks.on_click["edit-ship-name"] = function(event)
     local label = flow["ship-name-label"] or flow["label"]
     local textfield = flow["ship-name-textfield"]
     if not label or not textfield then
-        game.print("Ship GUI rename controls missing on edit-ship-name click")
         return
     end
 
@@ -357,7 +350,6 @@ callbacks.on_gui_confirmed["ship-name-textfield"] = function(event)
     local flow = textfield.parent
     local label = flow["ship-name-label"] or flow["label"]
     if not label then
-        game.print("Ship GUI rename label missing on confirm")
         return
     end
     local tags = event.element.tags

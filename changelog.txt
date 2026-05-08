@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.8.0
+Date: 2026-04-29
+  Changes:
+    - Integrated ship GUI directly into SpaceShipMod (external ship-gui dependency removed)
+    - Updated project versioning to reflect current development progress toward 1.0
+---------------------------------------------------------------------------------------------------
 Version: 0.2.0
 Date: 2025-09-06
   Bugfixes:

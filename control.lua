@@ -38,6 +38,46 @@ local function resolve_ship_by_hub_entity(hub_entity)
     return nil
 end
 
+local function resolve_ship_by_car_entity(car_entity)
+    if not (car_entity and car_entity.valid and car_entity.name == "spaceship-control-hub-car") then
+        return nil
+    end
+
+    local best_ship = nil
+    local best_distance_sq = math.huge
+
+    for _, ship in pairs(storage.spaceships or {}) do
+        if ship and ship.hub and ship.hub.valid and ship.hub.surface == car_entity.surface then
+            local dx = ship.hub.position.x - car_entity.position.x
+            local dy = ship.hub.position.y - car_entity.position.y
+            local distance_sq = (dx * dx) + (dy * dy)
+
+            if distance_sq < best_distance_sq then
+                best_distance_sq = distance_sq
+                best_ship = ship
+            end
+        end
+    end
+
+    if best_ship and best_distance_sq <= (100 * 100) then
+        return best_ship
+    end
+
+    local nearby_hubs = car_entity.surface.find_entities_filtered({
+        name = "spaceship-control-hub",
+        area = {
+            { x = car_entity.position.x - 100, y = car_entity.position.y - 100 },
+            { x = car_entity.position.x + 100, y = car_entity.position.y + 100 }
+        }
+    })
+
+    if nearby_hubs and nearby_hubs[1] and nearby_hubs[1].valid then
+        return resolve_ship_by_hub_entity(nearby_hubs[1])
+    end
+
+    return nil
+end
+
 
 -- Initialize storage tables
 storage.highlight_data = storage.highlight_data or {} -- Stores highlight data for each player
@@ -123,6 +163,14 @@ script.on_event(defines.events.on_gui_opened, function(event)
     if not player or not player.valid then return end
     local opened_entity = event.entity
     local ship
+
+    if opened_entity and opened_entity.valid and opened_entity.name == "spaceship-control-hub-car" then
+        ship = resolve_ship_by_car_entity(opened_entity)
+        if ship and ship.hub and ship.hub.valid then
+            player.opened = ship.hub
+            return
+        end
+    end
 
     if opened_entity and opened_entity.valid and opened_entity.name == "spaceship-control-hub" then
         ship = resolve_ship_by_hub_entity(opened_entity)
@@ -395,7 +443,6 @@ script.on_event(defines.events.on_space_platform_changed_state, function(event)
     Stations.handle_platform_state_change(event)
 
     local plat = event.platform
-    game.print(plat.name .. " has been changed state from:" .. event.old_state .. ",to:" .. plat.state)
     if string.find(plat.name, "-ship") and event.platform.state == defines.space_platform_state.waiting_at_station then
         if event.old_state == defines.space_platform_state.on_the_path then
             local hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
@@ -404,6 +451,7 @@ script.on_event(defines.events.on_space_platform_changed_state, function(event)
             end
             local ship = resolve_ship_by_hub_entity(hub[1])
             if not ship then return end
+
             ship.planet_orbiting = plat.space_location.name
             SpaceShip.on_platform_state_change(event)
         end
@@ -419,18 +467,6 @@ script.on_event(defines.events.on_space_platform_changed_state, function(event)
 end)
 
 script.on_event(defines.events.on_entity_cloned, function(event)
-    if event.source.name == "spaceship-control-hub" then
-        local source_hub_is_tracked_ship = false
-        for _, value in pairs(storage.spaceships or {}) do
-            if value.hub and value.hub.valid and value.hub.unit_number == event.source.unit_number then
-                source_hub_is_tracked_ship = true
-                break
-            end
-        end
-        if source_hub_is_tracked_ship then
-            game.print("Spaceship control hub cloned!")
-        end
-    end
     SpaceShip.handle_cloned_storage_update(event)
 end)
 

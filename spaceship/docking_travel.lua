@@ -64,7 +64,6 @@ return function(SpaceShip)
         storage.player_position_on_render = { x = math.floor(player.position.x), y = math.floor(player.position.y) }
         storage.highlight_data = storage.highlight_data or {}
         storage.highlight_data = SpaceShip.create_combined_renders(ship, ship.floor, false, { x = 0, y = -5 })
-        game.print("rends count: " .. #storage.highlight_data)
         storage.highlight_data_player_index = player.index
 
         storage.docking_player = player.index
@@ -164,7 +163,6 @@ return function(SpaceShip)
             if control_hub_car and control_hub_car.valid then
                 player.teleport(control_hub_car.position, control_hub_car.surface)
                 control_hub_car.set_driver(player)
-                game.print("You have entered the spaceship control hub car at the destination.")
             else
                 game.print("Error: Unable to find the spaceship control hub car at the destination.")
             end
@@ -346,6 +344,5 @@ return function(SpaceShip)
             end
         end
 
-        game.print("Updated docking status for " .. table_size(storage.spaceships) .. " ships")
     end
 end

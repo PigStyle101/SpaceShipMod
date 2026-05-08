@@ -110,9 +110,8 @@ return function(SpaceShip)
             }
             if car then
                 car.orientation = 0.0 -- Align the car with the controller orientation, if needed.
-                game.print("Spaceship control hub car spawned!")
             else
-                game.print("Eable to spawn spaceship control hub car!")
+                game.print("Unable to spawn spaceship control hub car!")
             end
         end
         if entity.name == "spaceship-docking-port" then
@@ -261,23 +260,49 @@ return function(SpaceShip)
         local destination = event and event.destination
 
         if not (source and source.valid and destination and destination.valid) then return end
-        if source.name ~= "spaceship-control-hub" or destination.name ~= "spaceship-control-hub" then return end
         if source.unit_number == destination.unit_number then return end
 
-        local source_ship = get_ship_by_hub_entity(source)
-        local destination_ship = get_ship_by_hub_entity(destination)
-        if not source_ship or not destination_ship then return end
+        if source.name == "spaceship-control-hub" and destination.name == "spaceship-control-hub" then
+            local source_ship = get_ship_by_hub_entity(source)
+            local destination_ship = get_ship_by_hub_entity(destination)
+            if not source_ship or not destination_ship then return end
 
-        if source_ship.schedule then
-            destination_ship.schedule = deep_copy(source_ship.schedule)
-            if destination_ship.platform and destination_ship.platform.valid then
-                destination_ship.platform.schedule = deep_copy(source_ship.schedule)
+            if source_ship.schedule then
+                destination_ship.schedule = deep_copy(source_ship.schedule)
+                if destination_ship.platform and destination_ship.platform.valid then
+                    destination_ship.platform.schedule = deep_copy(source_ship.schedule)
+                end
+            else
+                destination_ship.schedule = {}
+                if destination_ship.platform and destination_ship.platform.valid then
+                    destination_ship.platform.schedule = nil
+                end
             end
-        else
-            destination_ship.schedule = {}
-            if destination_ship.platform and destination_ship.platform.valid then
-                destination_ship.platform.schedule = nil
+            return
+        end
+
+        if source.name == "spaceship-docking-port" and destination.name == "spaceship-docking-port" then
+            if not storage.docking_ports then return end
+
+            local source_port = storage.docking_ports[source.unit_number]
+            local destination_port = storage.docking_ports[destination.unit_number]
+            if not source_port or not destination_port then return end
+
+            -- Copy configurable settings while preserving destination runtime references.
+            for key, value in pairs(source_port) do
+                if key ~= "entity" and key ~= "position" and key ~= "surface" and key ~= "ship_docked" then
+                    destination_port[key] = deep_copy(value)
+                end
             end
+
+            local player = event.player_index and game.get_player(event.player_index) or nil
+            local message = "Copied docking port settings from '" .. (source_port.name or "") .. "' to destination port"
+            if player and player.valid then
+                player.print(message)
+            else
+                game.print(message)
+            end
+            return
         end
     end
 end

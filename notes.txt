@@ -1,11 +1,21 @@
-custom gui that uses space hub inventory, that way stuff is hidden
+IMPORTANT (2026-05-05) - space platform state mapping mismatch:
+- Local runtime feedback reports:
+    - waiting_for_starter_pack = 0
+    - starter_pack_requested = 8
+    - starter_pack_on_the_way = 1
+    - on_the_path = 2
+    - waiting_for_departure = 3
+    - no_schedule = 4
+    - no_path = 5
+    - waiting_at_station = 6
+    - paused = 7
+- docs/runtime-api.json may show a different numeric mapping.
+- For logic, always use symbolic enums (defines.space_platform_state.*), not raw numbers.
 
 Current bugs: 
 
 
 need to do: -=important,--=less important
--make it so player can shoot astroids
--working on scan time tunning and clone tunning
 -add more conditions
 
 --add copy past via shift click and click to docking ports to copy thier name and ship limit

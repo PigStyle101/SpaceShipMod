@@ -1,4 +1,85 @@
 return function(SpaceShip, DROP_COST)
+    local function to_player(driver_or_passenger)
+        if not (driver_or_passenger and driver_or_passenger.valid) then return nil end
+
+        if driver_or_passenger.player and driver_or_passenger.player.valid then
+            return driver_or_passenger.player
+        end
+
+        if driver_or_passenger.index and driver_or_passenger.controller_type then
+            return driver_or_passenger
+        end
+
+        return nil
+    end
+
+    local function resolve_player_in_ship_cockpit(ship)
+        if not ship then return nil end
+
+        local cached = ship.player_in_cockpit
+        if cached and cached.valid and cached.vehicle and cached.vehicle.valid and
+            cached.vehicle.name == "spaceship-control-hub-car" then
+            return cached
+        end
+
+        if not (ship.surface and ship.surface.valid) then return nil end
+
+        local search_area = nil
+        if ship.bounds then
+            search_area = {
+                { x = ship.bounds.left_top.x - 1, y = ship.bounds.left_top.y - 1 },
+                { x = ship.bounds.right_bottom.x + 1, y = ship.bounds.right_bottom.y + 1 }
+            }
+        elseif ship.hub and ship.hub.valid and ship.hub.surface == ship.surface then
+            search_area = {
+                { x = ship.hub.position.x - 80, y = ship.hub.position.y - 80 },
+                { x = ship.hub.position.x + 80, y = ship.hub.position.y + 80 }
+            }
+        end
+
+        if not search_area then return nil end
+
+        local cockpit_cars = ship.surface.find_entities_filtered {
+            name = "spaceship-control-hub-car",
+            area = search_area
+        }
+
+        for _, car in pairs(cockpit_cars) do
+            if car and car.valid then
+                local driver_player = to_player(car.get_driver())
+                if driver_player then
+                    ship.player_in_cockpit = driver_player
+                    return driver_player
+                end
+
+                local passenger_player = to_player(car.get_passenger())
+                if passenger_player then
+                    ship.player_in_cockpit = passenger_player
+                    return passenger_player
+                end
+            end
+        end
+
+        return nil
+    end
+
+    local function get_ship_orbit_planet(ship)
+        if not ship then return nil end
+
+        local hub = ship.hub
+        local surface = hub and hub.valid and hub.surface or ship.surface
+        if not (surface and surface.valid and surface.platform and surface.platform.valid) then
+            return nil
+        end
+
+        local space_location = surface.platform.space_location
+        if not (space_location and space_location.name and space_location.name ~= "none") then
+            return nil
+        end
+
+        return space_location.name
+    end
+
     function SpaceShip.drop_player_to_planet(ship)
         -- Testing: material/cost gate is disabled for spaceship player drop.
         -- local can_drop, cost_message = check_drop_cost(ship)
@@ -7,12 +88,13 @@ return function(SpaceShip, DROP_COST)
         --     return
         -- end
 
-        if not ship.planet_orbiting then
+        local orbit_planet = get_ship_orbit_planet(ship)
+        if not orbit_planet then
             game.print("[color=red]Error: Ship is not orbiting any planet![/color]")
             return
         end
 
-        local player = ship.player_in_cockpit
+        local player = resolve_player_in_ship_cockpit(ship)
         if not player then
             game.print("[color=red]Error: No player in cockpit to drop![/color]")
             return
@@ -99,7 +181,7 @@ return function(SpaceShip, DROP_COST)
                 entity = temp_platform_hub,
                 cleanup_tick = game.tick + 900
             })
-            game.print("[color=green]Launching base-game landing sequence to " .. ship.planet_orbiting .. "![/color]")
+            game.print("[color=green]Launching base-game landing sequence to " .. orbit_planet .. "![/color]")
             return
         end
 
@@ -153,7 +235,7 @@ return function(SpaceShip, DROP_COST)
     end
 
     -- Handles dropping items as cargo pods (no player drop)
-    function SpaceShip.drop_items_to_planet(ship)
+    function SpaceShip.drop_items_to_planet(ship, slot_limit)
         -- Helper: Check if the ship has the required drop cost
         local function check_drop_cost(ship)
             if not ship.hub or not ship.hub.valid then return false, "No hub" end
@@ -187,22 +269,37 @@ return function(SpaceShip, DROP_COST)
         --     game.print(cost_message or "[color=red]Insufficient resources for drop![/color]")
         --     return
         -- end
-        if not ship.planet_orbiting then
+        local orbit_planet = get_ship_orbit_planet(ship)
+        if not orbit_planet then
             game.print("[color=red]Error: Ship is not orbiting any planet![/color]")
             return
         end
-        local target_surface_name = ship.planet_orbiting
+        local target_surface_name = orbit_planet
         local target_surface = game.surfaces[target_surface_name]
         if not target_surface then
             target_surface = game.create_surface(target_surface_name)
         end
         local cargo_items = {}
         local has_cargo = false
+        local max_slots_to_check = nil
+        local slot_limit_number = tonumber(slot_limit)
+        if slot_limit_number then
+            local parsed = math.floor(slot_limit_number)
+            if parsed > 0 then
+                max_slots_to_check = parsed
+            end
+        end
+
         if ship.hub and ship.hub.valid then
             local inventory = ship.hub.get_inventory(defines.inventory.chest)
             if inventory and not inventory.is_empty() then
+                local last_slot = #inventory
+                if max_slots_to_check then
+                    last_slot = math.min(last_slot, max_slots_to_check)
+                end
+
                 -- Blacklist drop cost items: do not allow them to be dropped as cargo
-                for i = 1, #inventory do
+                for i = 1, last_slot do
                     local stack = inventory[i]
                     if stack.valid_for_read then
                         local item_name = stack.name
@@ -233,8 +330,9 @@ return function(SpaceShip, DROP_COST)
                     inventory.remove({ name = item.name, count = item.count })
                 end
                 if has_cargo then
+                    local slot_scope_text = max_slots_to_check and (" (first " .. last_slot .. " slots)") or ""
                     game.print("[color=yellow]Cargo extracted from spaceship control hub: " ..
-                        #cargo_items .. " item stacks![/color]")
+                        #cargo_items .. " item stacks" .. slot_scope_text .. "![/color]")
                 end
             end
         end

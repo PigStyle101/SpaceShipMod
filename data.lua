@@ -465,10 +465,6 @@ spaceshipArmor.icons = {
 }
 spaceshipArmor.icon = nil  -- Remove single icon since we're using icons array
 
--- Debug: Let's check ALL properties of both armors to understand how visuals work
-local mech_armor = data.raw["armor"]["mech-armor"]
-local power_armor_mk2 = data.raw["armor"]["power-armor-mk2"]
-
 -- Now I understand how armor visuals work in Factorio 2.0!
 -- Armor visuals are defined in the CharacterPrototype's animations array
 -- Each CharacterArmorAnimation has an 'armors' property that lists which armors use those animations
@@ -476,16 +472,12 @@ local power_armor_mk2 = data.raw["armor"]["power-armor-mk2"]
 -- Find the character prototype and add spaceship-armor to the mech-armor animation set
 if data.raw["character"] and data.raw["character"]["character"] then
     local character = data.raw["character"]["character"]
-    log("SpaceShipMod DEBUG: Found character prototype")
     
     if character.animations then
-        log("SpaceShipMod DEBUG: Character has " .. #character.animations .. " animation sets")
         -- Look for the animation set that includes mech-armor
         for i, animation_set in ipairs(character.animations) do
             if animation_set.armors then
-                log("SpaceShipMod DEBUG: Animation set " .. i .. " has armors list with " .. #animation_set.armors .. " armors")
                 for j, armor_name in ipairs(animation_set.armors) do
-                    log("SpaceShipMod DEBUG: Animation set " .. i .. " includes armor: " .. armor_name)
                     if armor_name == "mech-armor" then
                         -- Found the mech-armor animation set! 
                         -- First, create a deep copy of this animation set for spaceship armor
@@ -528,20 +520,13 @@ if data.raw["character"] and data.raw["character"]["character"] then
                         
                         -- Add the new grey-tinted animation set to the character
                         table.insert(character.animations, spaceship_animation_set)
-                        
-                        log("SpaceShipMod DEBUG: Created grey-tinted animation set for spaceship-armor!")
+
                         break
                     end
                 end
-            else
-                log("SpaceShipMod DEBUG: Animation set " .. i .. " has no armors list (default/no armor)")
             end
         end
-    else
-        log("SpaceShipMod DEBUG: Character has no animations property")
     end
-else
-    log("SpaceShipMod DEBUG: Character prototype not found")
 end
 
 -- Create spaceship armor recipe (uses power-armor-mk2 ingredients since it's replacing it)
@@ -584,3 +569,9 @@ end
 -- =============================================================================
 -- NOTE: Global power-armor-mk2 replacement is handled in data-final-fixes.lua
 -- =============================================================================
+
+-- =============================================================================
+-- TIPS AND TRICKS
+-- =============================================================================
+
+require("__SpaceShipMod__/prototypes/tips-and-tricks")

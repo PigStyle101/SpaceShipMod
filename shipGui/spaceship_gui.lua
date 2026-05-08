@@ -9,6 +9,7 @@ local ship_captions = {
     dock_anchor = "Dock anchor",
     add_condition = "+Add wait condition",
     circuit_condition = "Circuit condition",
+    passenger_present_condition = "Passenger present",
     passenger_not_present_condition = "Passenger not present",
     unload = "Unload",
     no_dock = ": (Station has no dock)"
@@ -140,12 +141,12 @@ local function create_editable_label(parent, ship_name, identifier, callbacks_fi
     edit_button.style.height = 16
 end
 
-local function create(player, ship_name, ship_id, callbacks_filter, gui_anchor, paused)
+local function create(player, ship_name, ship_id, callbacks_filter, gui_anchor, automatic)
     --local anchor = {gui=defines.relative_gui_type.space_platform_hub_gui, position = defines.relative_gui_position.right}
 
-    local is_paused = paused == true
-    if type(paused) == "string" then
-        is_paused = paused == "right" or paused == "paused"
+    local is_automatic = automatic == true
+    if type(automatic) == "string" then
+        is_automatic = automatic == "left" or automatic == "automatic"
     end
 
     local frame = player.gui.relative.add {
@@ -159,7 +160,7 @@ local function create(player, ship_name, ship_id, callbacks_filter, gui_anchor, 
     local switch = frame.add {
         type = "switch",
         name = "paused",
-        switch_state = is_paused and "right" or "left",
+        switch_state = is_automatic and "left" or "right",
         left_label_caption = ship_captions.automatic,
         right_label_caption = ship_captions.paused,
         tags = { ship_id = ship_id, filter = callbacks_filter }
@@ -245,17 +246,29 @@ local function add_dock_selector(parent, docks, selected_dock, station_index, sh
         }
         return
     end
-    for key, value in pairs(docks.names) do
-        if value == selected_dock then
-            selected_dock = key
+    local dock_names = { "none" }
+    local seen = { none = true }
+    for _, value in pairs(docks.names or {}) do
+        if value and not seen[value] then
+            seen[value] = true
+            table.insert(dock_names, value)
         end
     end
+
+    local selected_index = 1
+    for key, value in pairs(dock_names) do
+        if value == selected_dock then
+            selected_index = key
+            break
+        end
+    end
+
     local select_dock = clamp_frame.add {
         type = "drop-down",
         name = "dock-menu",
-        items = docks.names or nil,
+        items = dock_names,
         caption = "Select clamp",
-        selected_index = selected_dock or 1,
+        selected_index = selected_index,
         tags = { station_index = station_index, ship_id = ship_id, filter = callbacks_filter }
     }
 end
@@ -409,10 +422,11 @@ function schedule_gui.on_add_condition(event)
 
     local conditions_display_name = {
         ship_captions.circuit_condition,
+        ship_captions.passenger_present_condition,
         ship_captions.passenger_not_present_condition
     }
 
-    local conditions_map = { "circuit", "passenger_not_present" }
+    local conditions_map = { "circuit", "passenger_present", "passenger_not_present" }
 
     local element = event.element
 
@@ -444,7 +458,7 @@ function schedule_gui.on_add_condition(event)
     }
 end
 
-local function create_passenger_absent_condition(condition, condition_index, frame, override_right, ship_id, callbacks_filter)
+local function create_passenger_condition(condition, condition_index, frame, override_right, ship_id, callbacks_filter, caption)
     if not frame then return end
 
     local station_index = frame.tags.station_index
@@ -534,7 +548,7 @@ local function create_passenger_absent_condition(condition, condition_index, fra
 
     row.add {
         type = "label",
-        caption = ship_captions.passenger_not_present_condition,
+        caption = caption,
         style = "bold_label"
     }
 
@@ -727,14 +741,16 @@ local function add_conditions(args)
     for i, condition in pairs(wait_conditions) do
         local condition_type = condition and condition.type and
             string.gsub(string.lower(tostring(condition.type)), "[%s%-]+", "_") or ""
-        if condition_type == "passenger_not_present" then
-            create_passenger_absent_condition(
+        if condition_type == "passenger_not_present" or condition_type == "passenger_present" then
+            create_passenger_condition(
                 condition,
                 i,
                 container,
                 override_right,
                 ship_id,
-                callbacks_filter
+                callbacks_filter,
+                condition_type == "passenger_present" and ship_captions.passenger_present_condition or
+                ship_captions.passenger_not_present_condition
             )
         else
             create_constant_condition(
@@ -765,7 +781,7 @@ end
 --- Creates a GUI for scheduling a spaceship.
 --- @param player LuaPlayer The player for whom the GUI is being created.
 --- @param schedule table The schedule table containing the spaceship's schedule data.
---- @param paused boolean Whether the spaceship is currently paused.
+--- @param automatic boolean Whether the spaceship is currently in automatic mode.
 --- @param ship_name string The name of the spaceship.
 --- @param ship_id any A unique identifier for the ship
 --- @param docks_table table<string, table<string, any>> A table where the key is a space location name,
@@ -773,7 +789,7 @@ end
 --- @param stations_docks table<int, int> A table where the key is an integer and the value is an integer.
 --- @param callbacks_filter table contains arbitraty strings to help you filter callbacks
 --- @param gui_anchor table A table specifying GUI anchor position with keys {gui=defines.relative_gui_type, position=defines.relative_gui_position}
-function schedule_gui.make_gui(player, schedule, paused, ship_name, ship_id, docks_table, stations_docks,
+function schedule_gui.make_gui(player, schedule, automatic, ship_name, ship_id, docks_table, stations_docks,
                                callbacks_filter, gui_anchor)
     local debug_func_name = "schedule_gui.make_gui"
     assert(player, "ERROR: arg player missing for " .. debug_func_name)
@@ -786,7 +802,7 @@ function schedule_gui.make_gui(player, schedule, paused, ship_name, ship_id, doc
 
     if player.gui.relative["schedule-container"] then player.gui.relative["schedule-container"].destroy() end
 
-    local schedule_container = create(player, ship_name, ship_id, callbacks_filter, gui_anchor, paused)
+    local schedule_container = create(player, ship_name, ship_id, callbacks_filter, gui_anchor, automatic)
 
     local station_names = fetch_station_names()
 

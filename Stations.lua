@@ -22,7 +22,7 @@ local function count_stations_for_planet(force, planet_name)
     local station_platforms = {}
     
     for _, platform in pairs(force.platforms) do
-        if platform.space_location and platform.space_location.name == planet_name then
+        if platform.valid and platform.space_location and platform.space_location.name == planet_name then
             if is_station_platform(platform.name) then
                 station_count = station_count + 1
                 table.insert(station_platforms, platform)
@@ -38,9 +38,13 @@ function Stations.handle_platform_state_change(event)
     local platform = event.platform
     local old_state = event.old_state
     local new_state = platform.state
-    
-    -- Check for state change from 1 (waiting for starter pack) to 7 (ready)
-    if old_state == 1 and new_state == 7 then
+
+    local is_ready_transition =
+        old_state == defines.space_platform_state.waiting_for_starter_pack and
+        new_state == defines.space_platform_state.starter_pack_requested
+
+    -- Process starter-pack request transition (0 -> 8 on current runtime mapping)
+    if is_ready_transition then
         -- Skip if this is a ship platform (should have been renamed by SpaceShip.lua)
         if is_ship_platform(platform.name) then
             return -- Ships are handled separately
@@ -72,8 +76,9 @@ function Stations.handle_platform_state_change(event)
                 game.print("[color=cyan]Existing station: " .. existing_stations[1].name .. "[/color]")
             end
             
-            -- Destroy the duplicate platform
-            platform.destroy()
+            -- Destroy the duplicate platform as quickly as the API allows.
+            -- Space platforms are always queued for deletion; using 1 tick minimizes the delay.
+            platform.destroy(1)
             return
         end
     end

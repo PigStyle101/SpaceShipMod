@@ -54,7 +54,7 @@
 - When adding temporary debug prints, keep them concise and easy to remove or gate.
 
 ## Integration points and dependencies
-- Required dependencies are in `info.json`: `space-age` and `ship-gui`.
+- Required dependencies are in `info.json`: `space-age`.
 - Cross-mod compatibility logic in `data-final-fixes.lua` globally replaces `power-armor-mk2` recipe/tech references with `spaceship-armor`.
 - Docking/automation interacts with Space Age platform state transitions (`on_space_platform_changed_state`).
 

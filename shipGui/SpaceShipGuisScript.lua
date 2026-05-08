@@ -4,24 +4,35 @@ local gui_maker = require("shipGui/spaceship_gui")
 
 local function build_docks_table()
     local docks_table = {}
+    local seen_per_planet = {}
     storage.docking_ports = storage.docking_ports or {}
 
     for _, value in pairs(storage.docking_ports) do
         if value.name ~= "ship" and value.surface and value.surface.platform and value.surface.platform.space_location then
             local location_name = value.surface.platform.space_location.name
             docks_table[location_name] = docks_table[location_name] or { names = {} }
-            table.insert(docks_table[location_name].names, value.name)
+            seen_per_planet[location_name] = seen_per_planet[location_name] or {}
+            if value.name and not seen_per_planet[location_name][value.name] then
+                seen_per_planet[location_name][value.name] = true
+                table.insert(docks_table[location_name].names, value.name)
+            end
         end
     end
 
     return docks_table
 end
 
+local function get_ship_gui_anchor(player, fallback_position)
+    return {
+        gui = defines.relative_gui_type.container_gui,
+        position = fallback_position or defines.relative_gui_position.left
+    }
+end
+
 -- Define event handlers
 function SpaceShipGuis.on_station_selected(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
-        game.print("Station " .. event.selected_station .. " selected for ship " .. ship.name)
         SpaceShip.add_or_change_station(ship, event.selected_station)
         
         -- Initialize port_records if needed
@@ -55,7 +66,6 @@ function SpaceShipGuis.on_station_selected(event)
             
             if first_port then
                 ship.port_records[station_index] = first_port
-                game.print("Auto-assigned port '" .. first_port .. "' for station " .. event.selected_station)
             else
                 game.print("Warning: No available ports found for station " .. event.selected_station)
             end
@@ -76,9 +86,6 @@ end
 
 function SpaceShipGuis.on_station_move_up(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " moving station up")
-    end
     SpaceShip.station_move_up(ship, event.station_index)
 
     local player = game.get_player(event.player_index)
@@ -92,9 +99,6 @@ end
 
 function SpaceShipGuis.on_station_move_down(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " moving station down")
-    end
     SpaceShip.station_move_down(ship, event.station_index)
 
     local player = game.get_player(event.player_index)
@@ -109,7 +113,6 @@ end
 function SpaceShipGuis.on_station_dock_selected(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
-        game.print("Ship " .. ship.name .. " handling dock selection")
         -- Initialize port_records if needed
         if not ship.port_records then
             ship.port_records = {}
@@ -117,22 +120,14 @@ function SpaceShipGuis.on_station_dock_selected(event)
         
         -- Store the port name for this station (e.g., "nauvis0", "nauvis1", etc.)
         ship.port_records[event.station_index] = event.selected_dock
-        game.print("Selected port '" .. event.selected_dock .. "' for station " .. event.station_index)
     end
 end
 
 function SpaceShipGuis.on_station_unload_check_changed(event)
-    local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling unload")
-    end
 end
 
 function SpaceShipGuis.on_station_condition_add(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling add condition")
-    end
     local condition_type = event.selected_condition_type
     if not condition_type then
         condition_type = string.lower(string.gsub(event.selected_item or "", " condition", ""))
@@ -147,7 +142,6 @@ end
 function SpaceShipGuis.on_station_goto(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
-        game.print("Ship " .. ship.name .. " handling goto")
         SpaceShip.goto_station(ship, event.station_index)
     end
     local player = game.get_player(event.player_index)
@@ -158,9 +152,6 @@ end
 
 function SpaceShipGuis.on_condition_move_up(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling move condition up")
-    end
     SpaceShip.condition_move_up(ship, event.station_index, event.condition_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.refresh_station_conditions(player, ship, event.station_index)) then
@@ -170,9 +161,6 @@ end
 
 function SpaceShipGuis.on_condition_move_down(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling move condition down")
-    end
     SpaceShip.condition_move_down(ship, event.station_index, event.condition_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.refresh_station_conditions(player, ship, event.station_index)) then
@@ -182,9 +170,6 @@ end
 
 function SpaceShipGuis.on_station_delete(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling delete station")
-    end
     SpaceShip.delete_station(ship, event.station_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.remove_station_widget(player, ship, event.station_index)) then
@@ -194,9 +179,6 @@ end
 
 function SpaceShipGuis.on_condition_delete(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling delete condition")
-    end
     SpaceShip.remove_wait_condition(ship, event.station_index, event.condition_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.refresh_station_conditions(player, ship, event.station_index)) then
@@ -206,24 +188,17 @@ end
 
 function SpaceShipGuis.on_condition_constant_confirmed(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling constant changed")
-    end
     SpaceShip.constant_changed(ship, event.station_index, event.condition_index, event.amount)
 end
 
 function SpaceShipGuis.on_comparison_sign_changed(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling comparator changed")
-    end
     SpaceShip.compare_changed(ship, event.station_index, event.condition_index, event.comparator)
 end
 
 function SpaceShipGuis.on_bool_changed(event)
     local ship = storage.spaceships[event.ship_id]
     if ship then
-        game.print("Ship " .. ship.name .. " handling bool changed")
         local station = ship.schedule and ship.schedule.records and ship.schedule.records[event.station_index]
         local condition = station and station.wait_conditions and station.wait_conditions[event.condition_index]
         if condition then
@@ -234,9 +209,6 @@ end
 
 function SpaceShipGuis.on_first_signal_selected(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling signal check")
-    end
     SpaceShip.signal_changed(ship, event.station_index, event.condition_index, event.selected_signal)
 end
 
@@ -255,15 +227,11 @@ function SpaceShipGuis.on_ship_rename_confirmed(event)
     end
 
     ship.name = new_name
-    game.print("Ship " .. old_name .. " handling rename to " .. ship.name)
 end
 
 function SpaceShipGuis.on_ship_paused_unpaused(event)
     local ship = storage.spaceships[event.ship_id]
-    if ship then
-        game.print("Ship " .. ship.name .. " handling paused")
-    end
-    SpaceShip.auto_manual_changed(ship)
+    SpaceShip.set_automatic_mode(ship, event.automatic == true)
 end
 
 -- Function to create the custom spaceship control GUI
@@ -271,59 +239,58 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
     if not (player and player.valid and ship and ship.name) then return end
     local relative_gui = player.gui.relative
 
-    if relative_gui["spaceship-controller-extended-gui-" .. ship.name] then
-        return
-    end
-    if relative_gui["spaceship-controller-schedule-gui-" .. ship.name] or
-        relative_gui["spaceship-controller-schedual-gui-" .. ship.name] then
-        return
-    end
+    -- Prevent duplicate GUIs
+    if relative_gui["spaceship-controller-extended-gui-" .. ship.name] then return end
+    if relative_gui["spaceship-controller-schedule-gui-" .. ship.name] or relative_gui["spaceship-controller-schedual-gui-" .. ship.name] then return end
+
     local ship_tag_number = tonumber(ship.id)
-    -- Initialize storage if needed
     storage = storage or {}
     storage.spaceships = storage.spaceships or {}
 
+    -- 1. Create the schedule GUI on the left
+    local gui_anchor_left = get_ship_gui_anchor(player, defines.relative_gui_position.left)
+    gui_maker.make_gui(
+        player,
+        ship.schedule,
+        ship.automatic,
+        ship.name,
+        ship.id,
+        build_docks_table(),
+        ship.port_records or {},
+        { mod = "pig-ex" },
+        gui_anchor_left
+    )
+
+    -- 2. Create the spaceship actions GUI on the right (under circuit conditions)
+    local gui_anchor_right = get_ship_gui_anchor(player, defines.relative_gui_position.right)
     local custom_gui = relative_gui.add {
         type = "frame",
         name = "spaceship-controller-extended-gui-" .. ship.name,
         caption = "Spaceship Actions",
         direction = "vertical",
-        anchor = {
-            gui = defines.relative_gui_type.container_gui,
-            position = defines.relative_gui_position.left
-        },
+        anchor = gui_anchor_right,
         tags = { ship = ship_tag_number }
     }
 
     -- Add a dropdown with researched planets (even if not yet visited)
     local planet_names = {}
     local force = ship.hub.force
-
-    -- Always include Nauvis (starting planet)
     table.insert(planet_names, "nauvis")
-
-    -- Check for researched Space Age planets
     local planet_research_map = {
         ["vulcanus"] = "planet-discovery-vulcanus",
         ["fulgora"] = "planet-discovery-fulgora",
         ["gleba"] = "planet-discovery-gleba",
         ["aquilo"] = "planet-discovery-aquilo"
     }
-
-    -- Add planets that have been researched
     for planet_name, research_tech in pairs(planet_research_map) do
         local tech = force.technologies[research_tech]
         if tech and tech.researched then
             table.insert(planet_names, planet_name)
         end
     end
-
-    -- Check for modded planets with discovery technologies
-    -- Look through all technologies for ones that follow the planet-discovery pattern
     for tech_name, technology in pairs(force.technologies) do
         if string.match(tech_name, "^planet%-discovery%-(.+)$") and technology.researched then
             local planet_name = string.match(tech_name, "^planet%-discovery%-(.+)$")
-            -- Don't add duplicates from the standard planets above
             local already_added = false
             for _, existing_planet in pairs(planet_names) do
                 if existing_planet == planet_name then
@@ -336,15 +303,8 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
             end
         end
     end
-
-    -- Also add any existing surfaces that are clearly planets (visited planets)
-    -- This catches any edge cases or planets that don't follow the research pattern
     for surface_name, surface in pairs(game.surfaces) do
-        if not string.find(surface_name, "platform") and
-            not string.find(surface_name, "space%-") and
-            not string.find(surface_name, "orbit") and
-            surface_name ~= "nauvis" then -- Don't duplicate nauvis
-            -- Check if it's not already in our list
+        if not string.find(surface_name, "platform") and not string.find(surface_name, "space%-") and not string.find(surface_name, "orbit") and surface_name ~= "nauvis" then
             local already_added = false
             for _, existing_planet in pairs(planet_names) do
                 if existing_planet == surface_name then
@@ -357,7 +317,6 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
             end
         end
     end
-
     custom_gui.add {
         type = "drop-down",
         name = "surface-dropdown",
@@ -367,8 +326,31 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
     }
     custom_gui.add { type = "button", name = "ship-dock", caption = "Dock", tags = { ship = ship_tag_number } }
     custom_gui.add { type = "button", name = "ship-takeoff", caption = "Takeoff", tags = { ship = ship_tag_number } }
-    custom_gui.add { type = "button", name = "drop-player-to-planet", caption = "Drop player to Planet", tags = { ship = ship_tag_number } }
-    custom_gui.add { type = "button", name = "drop-items-to-planet", caption = "Drop items to Planet", tags = { ship = ship_tag_number } }
+
+    if ship.own_surface then
+        custom_gui.add { type = "button", name = "drop-player-to-planet", caption = "Drop player to Planet", tags = { ship = ship_tag_number } }
+
+        local drop_slots_flow = custom_gui.add {
+            type = "flow",
+            name = "drop-slot-limit-flow",
+            direction = "horizontal"
+        }
+        drop_slots_flow.add {
+            type = "label",
+            caption = "Drop slots:"
+        }
+        drop_slots_flow.add {
+            type = "textfield",
+            name = "drop-slot-limit-input",
+            text = tostring(ship.drop_slot_limit or 10),
+            numeric = true,
+            allow_decimal = false,
+            allow_negative = false,
+            tooltip = "Only the first N hub inventory slots will be dropped"
+        }
+
+        custom_gui.add { type = "button", name = "drop-items-to-planet", caption = "Drop items to Planet", tags = { ship = ship_tag_number } }
+    end
 end
 
 -- Function to close the spaceship control GUI
@@ -390,14 +372,12 @@ function SpaceShipGuis.close_spaceship_gui(event)
         local custom_gui = player.gui.relative["spaceship-controller-extended-gui-" .. ship.name]
         if custom_gui then
             custom_gui.destroy()
-            game.print("extended GUI closed with the main GUI.")
         end
         local custom_gui = player.gui.relative["spaceship-controller-schedule-gui-" .. ship.name] or
             player.gui.relative["spaceship-controller-schedual-gui-" .. ship.name]
         if custom_gui then
             custom_gui.destroy()
             ship.schedule_gui = nil
-            game.print("schedule GUI closed with the main GUI.")
         end
     end
 end
@@ -408,34 +388,49 @@ function SpaceShipGuis.handle_button_click(event)
     local player = game.get_player(event.player_index)
     if button_name == "ship-takeoff" then -- Call the shipTakeoff function
         local ship = storage.spaceships[event.element.tags.ship]
-        game.print("Spaceship takeoff initiated!")
         local dropdown = event.element.parent["surface-dropdown"]
         SpaceShip.ship_takeoff(ship, dropdown)
-        SpaceShip.auto_manual_changed(ship)
+        SpaceShip.set_automatic_mode(ship, true)
     elseif button_name == "confirm-dock" then
         local ship = storage.spaceships[event.element.tags.ship]
-        game.print("Docking confirmed!")
         SpaceShip.finalize_dock(ship)
     elseif button_name == "cancel-dock" then
         local ship = storage.spaceships[event.element.tags.ship]
-        game.print("Docking canceled!")
         SpaceShip.cancel_dock(ship)
     elseif button_name == "ship-dock" then
-        game.print("Docking the spaceship...")
         local ship = storage.spaceships[event.element.tags.ship]
         SpaceShip.dock_ship(ship)
     elseif button_name == "drop-player-to-planet" then
-        game.print("dropping player to planet")
         local ship = storage.spaceships[event.element.tags.ship]
         SpaceShip.drop_player_to_planet(ship)
     elseif button_name == "drop-items-to-planet" then
-        game.print("dropping items to planet")
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.drop_items_to_planet(ship)
+        local slot_limit
+        local invalid_slot_input = false
+        local parent = event.element.parent
+        if parent and parent.valid and parent["drop-slot-limit-flow"] and parent["drop-slot-limit-flow"].valid then
+            local input = parent["drop-slot-limit-flow"]["drop-slot-limit-input"]
+            if input and input.valid then
+                local value = tonumber(input.text)
+                if value and value > 0 then
+                    slot_limit = math.floor(value)
+                elseif input.text ~= "" then
+                    invalid_slot_input = true
+                end
+            end
+        end
+
+        if ship then
+            if invalid_slot_input then
+                slot_limit = ship.drop_slot_limit or 10
+                game.print("[color=yellow]Invalid drop slot limit. Using " .. tostring(slot_limit) .. " slot(s).[/color]")
+            end
+            ship.drop_slot_limit = slot_limit
+        end
+
+        SpaceShip.drop_items_to_planet(ship, slot_limit)
     elseif button_name == "close-dock-gui" then
         SpaceShipGuis.close_docking_port_gui(player)
-    else
-        game.print("Unknown button clicked: " .. button_name)
     end
 end
 
@@ -520,12 +515,17 @@ function SpaceShipGuis.create_docking_port_gui(player, docking_port)
 end
 
 function SpaceShipGuis.close_docking_port_gui(player)
+    if not (player and player.valid) then return end
+
     -- Close the docking port GUI
-    if player.gui.screen["docking-port-gui"] then
-        if player.opened and player.opened.valid and player.opened.name == "docking-port-gui" then
+    local dock_gui = player.gui.screen["docking-port-gui"]
+    if dock_gui and dock_gui.valid then
+        if player.opened == dock_gui then
             player.opened = nil
         end
-        player.gui.screen["docking-port-gui"].destroy()
+        if dock_gui.valid then
+            dock_gui.destroy()
+        end
     end
     
     -- Clear the selected docking port reference
@@ -554,6 +554,7 @@ end
 function SpaceShipGuis.gui_maker_handler(ship, player_id)
     if not ship then return end
     local docks_table = {}
+    local seen_per_planet = {}
     if not storage.docking_ports then
         storage.docking_ports = {}
     end
@@ -570,14 +571,18 @@ function SpaceShipGuis.gui_maker_handler(ship, player_id)
                         names = {}
                     }
                 end
-                table.insert(docks_table[planet_name].names, value.name)
+                seen_per_planet[planet_name] = seen_per_planet[planet_name] or {}
+                if not seen_per_planet[planet_name][value.name] then
+                    seen_per_planet[planet_name][value.name] = true
+                    table.insert(docks_table[planet_name].names, value.name)
+                end
             end
         end
     end
     local player = game.get_player(player_id)
     if not player or not player.valid then return end
     local schedule = ship.schedule
-    local paused = not ship.automatic
+    local automatic = ship.automatic == true
     local ship_name = ship.name
     local ship_id = ship.id
 
@@ -587,11 +592,7 @@ function SpaceShipGuis.gui_maker_handler(ship, player_id)
     end
     local stations_docks = ship.port_records
 
-    local gui_anchor = {
-        gui = defines.relative_gui_type.container_gui,
-        position = defines.relative_gui_position
-            .right
-    }
+    local gui_anchor_left = get_ship_gui_anchor(player, defines.relative_gui_position.left)
 
     -- Only set platform schedule if it's properly structured
     if ship.own_surface and ship.surface and ship.surface.valid and ship.surface.platform and schedule and type(schedule) == "table" then
@@ -615,13 +616,13 @@ function SpaceShipGuis.gui_maker_handler(ship, player_id)
     gui_maker.make_gui(
         player,
         schedule,
-        paused,
+        automatic,
         ship_name,
         ship_id,
         docks_table,
         stations_docks,
         { mod = "pig-ex", },
-        gui_anchor
+        gui_anchor_left
     )
 end
 

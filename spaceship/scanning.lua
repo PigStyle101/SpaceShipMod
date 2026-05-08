@@ -130,17 +130,11 @@ return function(SpaceShip)
                     storage.scan_state.priority_waiting_condition = true
                     storage.scan_state.next_run_tick = game.tick
                 end
-                game.print("Scan is already in progress for ship " .. ship.name .. ".")
                 return
             end
 
             local queued = enqueue_scan_request(ship, scan_per_tick, tick_amount, waiting_priority)
             ship.waiting_for_scan = true
-            if queued then
-                game.print("Scan queued for ship " .. ship.name .. ".")
-            else
-                game.print("Scan already queued for ship " .. ship.name .. ".")
-            end
             return
         end
 
@@ -199,8 +193,6 @@ return function(SpaceShip)
             priority_waiting_condition = waiting_priority,
             preserved_port_records = preserved_port_records -- Preserve port_records during scan
         }
-        game.print("Ship scan started. Scanning up to " ..
-            storage.scan_state.scan_per_tick .. " tiles per " .. storage.scan_state.tick_amount .. " tick(s).")
     end
 
     function SpaceShip.continue_scan_ship()
@@ -267,9 +259,6 @@ return function(SpaceShip)
             end
 
             storage.scan_highlight_expire_tick = game.tick + 60
-            game.print("Ship scan completed! Found " ..
-                table_size(state.flooring_tiles) ..
-                " tiles and " .. table_size(state.entities_on_flooring) .. " entities.")
 
             if state.docking_port then
                 ship.docking_port = state.docking_port
@@ -393,35 +382,5 @@ return function(SpaceShip)
         end
 
         state.tick_counter = state.tick_counter + 1
-        state.last_progress_print_tick = state.last_progress_print_tick or 0
-        if (game.tick - state.last_progress_print_tick) >= 60 then
-            state.last_progress_print_tick = game.tick
-            local scanned_floor_tiles = table_size(state.flooring_tiles)
-            local total_floor_tiles = state.total_floor_tiles or scanned_floor_tiles
-            if total_floor_tiles < scanned_floor_tiles then
-                total_floor_tiles = scanned_floor_tiles
-            end
-
-            local total_entities = state.total_entities or 0
-            local processed_entities = 0
-            if total_entities > 0 then
-                processed_entities = math.min(total_entities, math.max(0, state.pending_entities_index - 1))
-            end
-            local progress_percent = 0
-
-            if state.phase == "tiles" then
-                if total_floor_tiles > 0 then
-                    progress_percent = math.floor((scanned_floor_tiles / total_floor_tiles) * 80)
-                end
-            else
-                if total_entities == 0 then
-                    progress_percent = 100
-                else
-                    progress_percent = 80 + math.floor((processed_entities / total_entities) * 20)
-                end
-            end
-
-            game.print("Scanning progress: " .. progress_percent .. "% complete")
-        end
     end
 end

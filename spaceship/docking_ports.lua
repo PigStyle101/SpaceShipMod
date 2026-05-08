@@ -168,6 +168,18 @@ return function(SpaceShip)
         local target_docking_port_unit_number
 
         local selected_port_name = ship.port_records[schedule.current]
+        if selected_port_name == "none" then
+            if ship.automatic then
+                if SpaceShip.set_automatic_mode then
+                    SpaceShip.set_automatic_mode(ship, false)
+                else
+                    ship.automatic = false
+                end
+                game.print("Ship " .. ship.name .. " reached " .. (schedule.records[schedule.current].station or "station") ..
+                    " with dock anchor 'none'; automatic mode disabled.")
+            end
+            return false
+        end
 
         if selected_port_name then
             local target_planet = schedule.records[schedule.current].station

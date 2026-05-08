@@ -24,13 +24,71 @@ return function(SpaceShip)
         end
     end
 
-    local function is_player_on_ship(ship)
+    local function get_next_schedule_index(schedule)
+        if not (schedule and schedule.records and #schedule.records > 0) then
+            return nil
+        end
+
+        local current = tonumber(schedule.current) or 1
+        local next_index = current + 1
+        if next_index > #schedule.records then
+            next_index = 1
+        end
+        return next_index
+    end
+
+    local function is_player_in_ship_cockpit(ship)
         if not ship or not ship.surface or not ship.surface.valid then return false end
 
         local cockpit_player = ship.player_in_cockpit
-        if cockpit_player and cockpit_player.valid and cockpit_player.surface == ship.surface and
+        if cockpit_player and cockpit_player.valid and
             cockpit_player.vehicle and cockpit_player.vehicle.valid and
-            cockpit_player.vehicle.name == "spaceship-control-hub-car" then
+            cockpit_player.vehicle.name == "spaceship-control-hub-car" and
+            cockpit_player.vehicle.surface == ship.surface then
+            return true
+        end
+
+        local search_area = nil
+        if ship.bounds then
+            search_area = {
+                { x = ship.bounds.left_top.x - 1, y = ship.bounds.left_top.y - 1 },
+                { x = ship.bounds.right_bottom.x + 1, y = ship.bounds.right_bottom.y + 1 }
+            }
+        elseif ship.hub and ship.hub.valid and ship.hub.surface == ship.surface then
+            search_area = {
+                { x = ship.hub.position.x - 80, y = ship.hub.position.y - 80 },
+                { x = ship.hub.position.x + 80, y = ship.hub.position.y + 80 }
+            }
+        else
+            return false
+        end
+
+        local cockpit_cars = ship.surface.find_entities_filtered {
+            name = "spaceship-control-hub-car",
+            area = search_area
+        }
+
+        for _, car in pairs(cockpit_cars) do
+            if car and car.valid then
+                local driver = car.get_driver()
+                if driver and driver.valid and driver.player and driver.player.valid then
+                    return true
+                end
+
+                local passenger = car.get_passenger()
+                if passenger and passenger.valid and passenger.player and passenger.player.valid then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    local function is_player_on_ship(ship)
+        if not ship or not ship.surface or not ship.surface.valid then return false end
+
+        if is_player_in_ship_cockpit(ship) then
             return true
         end
 
@@ -74,6 +132,11 @@ return function(SpaceShip)
                 passenger_on_ship = is_player_on_ship(ship)
             end
             return not passenger_on_ship
+        elseif condition_type == "passenger_present" then
+            if passenger_on_ship == nil then
+                passenger_on_ship = is_player_on_ship(ship)
+            end
+            return passenger_on_ship
         end
 
         if condition and condition.condition and condition.condition.first_signal then
@@ -129,7 +192,6 @@ return function(SpaceShip)
         }
         ship.schedule   = schedule
         mark_schedule_conditions_dirty(ship)
-        game.print("Schedule applied and started for:" .. ship.name)
     end
 
     function SpaceShip.add_or_change_station(ship, planet_name, index)
@@ -215,7 +277,6 @@ return function(SpaceShip)
         ship.schedule.records = temp_schedule
         mark_schedule_conditions_dirty(ship)
 
-        game.print("Station " .. station_index .. " removed from ship " .. ship.name .. ".")
     end
 
     function SpaceShip.read_circuit_signals(entity)
@@ -267,11 +328,15 @@ return function(SpaceShip)
                     local progress_value = 0
 
                     local condition_type = normalize_condition_type(condition and condition.type)
-                    if condition_type == "passenger_not_present" then
+                    if condition_type == "passenger_not_present" or condition_type == "passenger_present" then
                         if passenger_on_ship == nil then
                             passenger_on_ship = is_player_on_ship(ship)
                         end
-                        progress_value = (not passenger_on_ship) and 1 or 0
+                        if condition_type == "passenger_not_present" then
+                            progress_value = (not passenger_on_ship) and 1 or 0
+                        else
+                            progress_value = passenger_on_ship and 1 or 0
+                        end
                     elseif condition and condition.condition and condition.condition.first_signal then
                         local signal_value = tonumber(signals[condition.condition.first_signal.name]) or 0
                         local target_value = tonumber(condition.condition.constant) or 0
@@ -354,7 +419,7 @@ return function(SpaceShip)
             if condition then
                 valid_conditions_found = true
                 local condition_type = normalize_condition_type(condition.type)
-                if condition_type == "passenger_not_present" then
+                if condition_type == "passenger_not_present" or condition_type == "passenger_present" then
                     if passenger_on_ship == nil then
                         passenger_on_ship = is_player_on_ship(ship)
                     end
@@ -415,6 +480,19 @@ return function(SpaceShip)
             if ship.scanned and ship.docked and ship.reference_tile and ship.floor and table_size(ship.floor) > 0 then
                 local all_conditions_met = SpaceShip.check_schedule_conditions(ship)
                 if all_conditions_met or ship.leave_immediately then
+                    local docked_planet = nil
+                    if ship.surface and ship.surface.valid and ship.surface.platform and ship.surface.platform.space_location then
+                        docked_planet = ship.surface.platform.space_location.name
+                    end
+
+                    if docked_planet and current_station and current_station.station == docked_planet then
+                        local next_index = get_next_schedule_index(schedule)
+                        if next_index and next_index ~= schedule.current then
+                            schedule.current = next_index
+                            current_station = schedule.records[schedule.current]
+                        end
+                    end
+
                     ship.leave_immediately = false -- Reset the flag
                     local clone_result = SpaceShip.clone_ship_to_space_platform(ship)
                     if clone_result == "deferred" then
@@ -427,7 +505,6 @@ return function(SpaceShip)
                         normalize_wait_conditions_in_schedule(schedule)
                         platform.schedule = schedule
                         platform.paused = false
-                        game.print("Ship " .. ship.name .. " departing to " .. current_station.station)
                     end
                 end
             end
@@ -445,7 +522,7 @@ return function(SpaceShip)
             compare_type = "and"
         }
 
-        if normalized ~= "passenger_not_present" then
+        if normalized ~= "passenger_not_present" and normalized ~= "passenger_present" then
             wait_condition.condition = {
                 first_signal = {
                     type = "virtual",
@@ -551,10 +628,6 @@ return function(SpaceShip)
             ship.surface.platform.schedule = ship.schedule
             ship.surface.platform.paused = false
         end
-
-        game.print("Ship " ..
-            ship.name ..
-            " current destination set to station " .. station_index .. " and set to automatic mode. Will depart when ready.")
     end
 
     function SpaceShip.condition_move_up(ship, station_index, condition_index)
@@ -628,18 +701,23 @@ return function(SpaceShip)
         mark_schedule_conditions_dirty(ship)
     end
 
-    function SpaceShip.auto_manual_changed(ship)
-        if ship.automatic == true then ship.automatic = false else ship.automatic = true end
+    function SpaceShip.set_automatic_mode(ship, automatic)
+        if not ship then return end
+
+        local desired_automatic = automatic == true
+        ship.automatic = desired_automatic
+
         if not ship.automatic and SpaceShip.clear_waiting_states then
             SpaceShip.clear_waiting_states(ship)
         end
-        if ship.own_surface == true then
-            if ship.automatic == true then
-                ship.surface.platform.paused = false
-            else
-                ship.surface.platform.paused = true
-            end
+
+        if ship.own_surface == true and ship.surface and ship.surface.valid and ship.surface.platform and ship.surface.platform.valid then
+            ship.surface.platform.paused = not ship.automatic
         end
-        game.print("Ship " .. ship.name .. " automatic mode is now " .. tostring(ship.automatic))
+    end
+
+    function SpaceShip.auto_manual_changed(ship)
+        if not ship then return end
+        SpaceShip.set_automatic_mode(ship, not ship.automatic)
     end
 end
