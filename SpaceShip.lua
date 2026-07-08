@@ -95,5 +95,6 @@ require("spaceship/cloning")(SpaceShip)
 require("spaceship/docking_travel")(SpaceShip)
 require("spaceship/drops")(SpaceShip, DROP_COST)
 require("spaceship/entity_handlers")(SpaceShip)
+require("spaceship/storage")(SpaceShip)
 
 return SpaceShip

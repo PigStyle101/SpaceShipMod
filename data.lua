@@ -44,6 +44,79 @@ local controlHubItem = table.deepcopy(data.raw["item"]["cargo-bay"])
 local controlHubRecipe = table.deepcopy(data.raw["recipe"]["cargo-bay"])
 local controlHubEntityHub = table.deepcopy(data.raw["space-platform-hub"]["space-platform-hub"])
 local controlHubItemCar = table.deepcopy(data.raw["item-with-entity-data"]["car"])
+local storageLinkEntity = table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+
+local linkedChestPrototype = data.raw["linked-container"] and data.raw["linked-container"]["linked-chest"] or nil
+local linkedChestItem = data.raw.item and data.raw.item["linked-chest"] or nil
+local steelChestItem = data.raw.item and data.raw.item["steel-chest"] or nil
+local steelChestPrototype = data.raw.container and data.raw.container["steel-chest"] or nil
+
+local storageLinkItem = {
+    type = "item",
+    name = "spaceship-storage-link",
+    localised_name = "Spaceship Storage Link",
+    localised_description = "Connected storage module. Each module increases control hub capacity.",
+    icon = data.raw["item"]["cargo-bay"].icon,
+    icon_size = data.raw["item"]["cargo-bay"].icon_size,
+    subgroup = "storage",
+    order = "a[items]-zz[spaceship-storage-link]",
+    place_result = "spaceship-storage-link",
+    stack_size = 50
+}
+
+local storageLinkRecipe = {
+    type = "recipe",
+    name = "spaceship-storage-link",
+    localised_name = "Spaceship Storage Link",
+    enabled = false,
+    ingredients = {
+        { type = "item", name = "steel-chest", amount = 2 },
+        { type = "item", name = "electronic-circuit", amount = 4 }
+    },
+    results = {
+        { type = "item", name = "spaceship-storage-link", amount = 1 }
+    }
+}
+
+storageLinkEntity.name = "spaceship-storage-link"
+storageLinkEntity.localised_name = "Spaceship Storage Link"
+storageLinkEntity.localised_description = "Storage expansion module. Increases spaceship control hub capacity."
+storageLinkEntity.minable = { mining_time = 0.2, result = "spaceship-storage-link" }
+storageLinkEntity.placeable_by = { item = "spaceship-storage-link", count = 1 }
+storageLinkEntity.surface_conditions = nil
+storageLinkEntity.flags = { "placeable-neutral", "player-creation", "not-rotatable" }
+storageLinkEntity.tile_width = 4
+storageLinkEntity.tile_height = 4
+storageLinkEntity.collision_box = { { -1.9, -1.9 }, { 1.9, 1.9 } }
+storageLinkEntity.selection_box = { { -2.0, -2.0 }, { 2.0, 2.0 } }
+storageLinkEntity.icon = data.raw["item"]["cargo-bay"].icon
+storageLinkEntity.icon_size = data.raw["item"]["cargo-bay"].icon_size
+storageLinkEntity.sprites = {
+    north = {
+        filename = data.raw["item"]["cargo-bay"].icon,
+        width = data.raw["item"]["cargo-bay"].icon_size,
+        height = data.raw["item"]["cargo-bay"].icon_size,
+        scale = 2
+    },
+    east = {
+        filename = data.raw["item"]["cargo-bay"].icon,
+        width = data.raw["item"]["cargo-bay"].icon_size,
+        height = data.raw["item"]["cargo-bay"].icon_size,
+        scale = 2
+    },
+    south = {
+        filename = data.raw["item"]["cargo-bay"].icon,
+        width = data.raw["item"]["cargo-bay"].icon_size,
+        height = data.raw["item"]["cargo-bay"].icon_size,
+        scale = 2
+    },
+    west = {
+        filename = data.raw["item"]["cargo-bay"].icon,
+        width = data.raw["item"]["cargo-bay"].icon_size,
+        height = data.raw["item"]["cargo-bay"].icon_size,
+        scale = 2
+    }
+}
 
 -- =============================================================================
 -- DOCKING PORT MODIFICATIONS
@@ -292,10 +365,10 @@ data:extend({
             },
             {
                 type = "unlock-recipe",
-                recipe = "spaceship-armor"
+                recipe = "spaceship-storage-link"
             }
         },
-        prerequisites = { "space-science-pack" },
+        prerequisites = { "space-science-pack", "power-armor-mk2" },
         unit = {
             count = 1000,
             ingredients = {
@@ -319,6 +392,9 @@ data:extend({
     floorRecipe,
     controlHubItem,
     controlHubRecipe,
+    storageLinkItem,
+    storageLinkRecipe,
+    storageLinkEntity,
     wallEntity,
     wallItem,
     wallRecipe,
@@ -465,6 +541,25 @@ spaceshipArmor.icons = {
 }
 spaceshipArmor.icon = nil  -- Remove single icon since we're using icons array
 
+-- Make the Space Suit exactly half as capable as mech-armor in every quantifiable way:
+-- half damage resistances, half inventory bonus, and a half-size equipment grid.
+if spaceshipArmor.resistances then
+    for _, resistance in pairs(spaceshipArmor.resistances) do
+        resistance.decrease = (resistance.decrease or 0) / 2
+        resistance.percent = (resistance.percent or 0) / 2
+    end
+end
+spaceshipArmor.inventory_size_bonus = (spaceshipArmor.inventory_size_bonus or 0) / 2
+
+local mechArmorGrid = data.raw["equipment-grid"][spaceshipArmor.equipment_grid]
+if mechArmorGrid then
+    local halfGrid = table.deepcopy(mechArmorGrid)
+    halfGrid.name = "spaceship-armor-equipment-grid"
+    halfGrid.height = math.max(1, math.floor(halfGrid.height / 2))
+    spaceshipArmor.equipment_grid = halfGrid.name
+    data:extend({halfGrid})
+end
+
 -- Now I understand how armor visuals work in Factorio 2.0!
 -- Armor visuals are defined in the CharacterPrototype's animations array
 -- Each CharacterArmorAnimation has an 'armors' property that lists which armors use those animations
@@ -534,8 +629,10 @@ local spaceshipArmorRecipe = table.deepcopy(data.raw["recipe"]["mech-armor"])
 spaceshipArmorRecipe.name = "spaceship-armor"
 spaceshipArmorRecipe.results = { {type = "item", name = "spaceship-armor", amount = 1} }
 
--- Use the exact same ingredients as power-armor-mk2 since this is replacing it
+-- Use the exact same ingredients as power-armor-mk2 since this is replacing it, plus a
+-- required power-armor to craft up from (matches the Space Suit being a lesser armor).
 spaceshipArmorRecipe.ingredients = {
+    {type = "item", name = "power-armor", amount = 1},
     {type = "item", name = "efficiency-module-2", amount = 25},
     {type = "item", name = "electric-engine-unit", amount = 40},
     {type = "item", name = "low-density-structure", amount = 30},

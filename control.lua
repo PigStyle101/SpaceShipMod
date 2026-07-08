@@ -90,6 +90,7 @@ script.on_init(function()
     storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
     Stations.init()
     SpaceShip.update_all_ship_docking_status()
+    SpaceShip.refresh_all_ship_storage_capacities()
 end)
 
 -- Handle configuration changes (mod updates)
@@ -100,6 +101,7 @@ script.on_configuration_changed(function()
     storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
     Stations.init()
     SpaceShip.update_all_ship_docking_status()
+    SpaceShip.refresh_all_ship_storage_capacities()
 end)
 
 script.on_event(defines.events.on_cargo_pod_finished_descending, function(event)
@@ -154,6 +156,13 @@ script.on_event(defines.events.on_space_platform_mined_entity, function(event)
     SpaceShip.handle_mined_entity(event.entity)
 end)
 
+script.on_event(defines.events.on_player_rotated_entity, function(event)
+    local entity = event.entity
+    if not (entity and entity.valid and entity.name == "spaceship-docking-port") then return end
+
+    SpaceShip.toggle_docking_port_direction(entity, event.previous_direction)
+end)
+
 script.on_event(defines.events.on_entity_settings_pasted, function(event)
     SpaceShip.handle_entity_settings_pasted(event)
 end)
@@ -163,6 +172,18 @@ script.on_event(defines.events.on_gui_opened, function(event)
     if not player or not player.valid then return end
     local opened_entity = event.entity
     local ship
+
+    if opened_entity and opened_entity.valid and opened_entity.name == "spaceship-storage-link" then
+        ship = SpaceShip.get_ship_for_storage_module(opened_entity)
+        if ship and ship.hub and ship.hub.valid then
+            if player.opened then
+                player.opened = nil
+            end
+            SpaceShipGuis.create_spaceship_gui(player, ship)
+            SpaceShipGuis.gui_maker_handler(ship, event.player_index)
+        end
+        return
+    end
 
     if opened_entity and opened_entity.valid and opened_entity.name == "spaceship-control-hub-car" then
         ship = resolve_ship_by_car_entity(opened_entity)
@@ -187,6 +208,12 @@ script.on_event(defines.events.on_gui_opened, function(event)
         end
         -- Open our custom GUI
         SpaceShipGuis.create_docking_port_gui(player, event.entity)
+    end
+
+    if opened_entity and opened_entity.valid and opened_entity.name == "rocket-silo" then
+        if Stations.has_discovered_a_planet(player.force) and not Stations.has_spaceship_armor(player) then
+            player.print("[color=red]Warning: You are not wearing a Space Suit or Mech Armor. You will not be able to travel to space and will waste a rocket if you try.[/color]")
+        end
     end
 end)
 
@@ -287,14 +314,26 @@ script.on_event(defines.events.on_tick, function(event)
         for _, ship in pairs(storage.spaceships or {}) do
             local player = ship.player
             if player and player.valid and player.gui and player.gui.relative and player.gui.relative["schedule-container"] and ship.hub and ship.hub.valid then
+                local schedule_container = player.gui.relative["schedule-container"]
+                local gui_tags = schedule_container and schedule_container.tags or nil
+                local gui_ship_id = gui_tags and gui_tags.ship_id
+                if gui_ship_id and tostring(gui_ship_id) ~= tostring(ship.id) then
+                    goto continue_progress_refresh
+                end
+
                 local signals = SpaceShip.read_circuit_signals(ship.hub)
                 local values = SpaceShip.get_progress_values(ship, signals)
                 schedule_gui.update_all_station_progress(values, player)
             end
+            ::continue_progress_refresh::
         end
         Stations.enforce_station_hub_controls()
         SpaceShip.check_automatic_behavior()
         SpaceShip.check_waiting_ships_for_dock_availability()
+    end
+
+    if game.tick % 300 == 0 then
+        SpaceShip.refresh_all_ship_storage_capacities()
     end
 
     -- Process pending planet drops
@@ -304,7 +343,12 @@ script.on_event(defines.events.on_tick, function(event)
     if storage.entities_to_restore and storage.entities_to_restore_tick and game.tick >= storage.entities_to_restore_tick then
         for _, entity_data in pairs(storage.entities_to_restore) do
             if entity_data.entity and entity_data.entity.valid then
-                entity_data.entity.active = entity_data.active
+                local ok = pcall(function()
+                    entity_data.entity.active = entity_data.active
+                end)
+                if not ok then
+                    -- Ignore unsupported active-state writes on newer API/runtime versions.
+                end
             end
         end
         storage.entities_to_restore = nil
@@ -376,7 +420,7 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
     elseif vehicle.name == "cargo-pod" then
         if not Stations.has_spaceship_armor(player) then
             player.driving = false
-            game.print("[color=red]You need Spaceship Armor to go to space![/color]")
+            game.print("[color=red]You need a Space Suit to go to space![/color]")
         end
     end
 end)
@@ -468,6 +512,15 @@ end)
 
 script.on_event(defines.events.on_entity_cloned, function(event)
     SpaceShip.handle_cloned_storage_update(event)
+
+    local destination = event.destination
+    if destination and destination.valid and destination.name == "spaceship-docking-port" then
+        local source_direction = nil
+        if event.source and event.source.valid then
+            source_direction = event.source.direction
+        end
+        SpaceShip.enforce_docking_port_direction(destination, source_direction)
+    end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)

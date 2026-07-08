@@ -48,8 +48,12 @@
 - Prefer **debug-first fixes** over speculative fallbacks.
   - If the failure path is not obvious, add focused debug output (`game.print`) around state transitions and branch decisions.
   - Verify behavior from logs/tick flow, then implement the direct fix.
+- Do not write code unless confidence is at least **99%** that the approach is correct.
+  - If confidence is below 99%, stop and investigate the proper implementation first using local docs, existing working patterns, or the Factorio API references.
+  - Prefer verified patterns over guesses, especially for controls, events, and storage/state transitions.
 - Avoid adding fallback logic whenever possible.
   - Do not add legacy-style alternate paths “just in case” unless there is a proven compatibility requirement.
+  - Do not add redundant layers of recovery, retry, or fallback code when the root cause is known; fix the cause directly instead.
   - Keep one clear source-of-truth flow per behavior (especially cloning, docking, and automation).
 - When adding temporary debug prints, keep them concise and easy to remove or gate.
 

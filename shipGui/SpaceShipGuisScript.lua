@@ -191,6 +191,11 @@ function SpaceShipGuis.on_condition_constant_confirmed(event)
     SpaceShip.constant_changed(ship, event.station_index, event.condition_index, event.amount)
 end
 
+function SpaceShipGuis.on_condition_time_confirmed(event)
+    local ship = storage.spaceships[event.ship_id]
+    SpaceShip.time_changed(ship, event.station_index, event.condition_index, event.amount)
+end
+
 function SpaceShipGuis.on_comparison_sign_changed(event)
     local ship = storage.spaceships[event.ship_id]
     SpaceShip.compare_changed(ship, event.station_index, event.condition_index, event.comparator)
@@ -609,7 +614,7 @@ function SpaceShipGuis.gui_maker_handler(ship, player_id)
         end
 
         if valid_schedule then
-            ship.surface.platform.schedule = schedule
+            ship.surface.platform.schedule = SpaceShip.to_native_schedule(schedule)
         end
     end
 

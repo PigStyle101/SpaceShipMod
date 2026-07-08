@@ -9,6 +9,7 @@ local ship_captions = {
     dock_anchor = "Dock anchor",
     add_condition = "+Add wait condition",
     circuit_condition = "Circuit condition",
+    time_passed_condition = "Time passed",
     passenger_present_condition = "Passenger present",
     passenger_not_present_condition = "Passenger not present",
     unload = "Unload",
@@ -341,6 +342,7 @@ local function add_station(args)
     location_flow.add {
         type = "sprite-button",
         sprite = station_index == current_destination and "utility/stop" or "utility/play",
+        toggled = station_index == current_destination,
         style = "train_schedule_action_button",
         name = "start-stop-button",
         tags = { station_name = station_static_name, station_index = station_index, ship_id = ship_id, filter = callbacks_filter }
@@ -422,11 +424,12 @@ function schedule_gui.on_add_condition(event)
 
     local conditions_display_name = {
         ship_captions.circuit_condition,
+        ship_captions.time_passed_condition,
         ship_captions.passenger_present_condition,
         ship_captions.passenger_not_present_condition
     }
 
-    local conditions_map = { "circuit", "passenger_present", "passenger_not_present" }
+    local conditions_map = { "circuit", "time_passed", "passenger_present", "passenger_not_present" }
 
     local element = event.element
 
@@ -720,6 +723,128 @@ local function create_constant_condition(condition, condition_index, frame, over
     }
 end
 
+local function create_time_condition(condition, condition_index, frame, override_right, ship_id, callbacks_filter)
+    if not frame then return end
+
+    local station_index = frame.tags.station_index
+    local main_container = frame
+    local compare_type = condition.compare_type
+
+    local bool_container = main_container["bool-column"] or
+    main_container.add { type = "flow", direction = "vertical", name = "bool-column" }
+
+    if #bool_container.children == 0 then
+        local spacer = bool_container.add { type = "empty-widget" }
+        spacer.style.minimal_height = 18
+        spacer.style.natural_height = 18
+    end
+
+    if main_container["conditions-column"] then
+        local bool_flow = bool_container.add { type = "flow", direction = "horizontal" }
+        bool_flow.style.minimal_width = 100
+
+        local bool_frame = bool_flow.add { type = "frame" }
+        bool_frame.style.maximal_height = 40
+        bool_frame.style.vertical_align = "center"
+        bool_frame.style.top_padding = 2
+        bool_frame.style.bottom_padding = 2
+        bool_frame.style.left_padding = 2
+        bool_frame.style.right_padding = 2
+
+        local bool_button = bool_frame.add {
+            type = "button",
+            name = "bool-switch",
+            caption = condition.compare_type == "and" and "AND" or condition.compare_type == "or" and "OR" or "AND",
+            tags = {
+                station_index = station_index,
+                condition_index = condition_index,
+                ship_id = ship_id,
+                callbacks_filter = callbacks_filter
+            }
+        }
+        bool_button.style.maximal_width = 56
+
+        bool_flow.style.minimal_height = 40
+        bool_flow.style.natural_height = 40
+        bool_flow.style.maximal_height = 40
+        bool_flow.style.vertical_align = "center"
+
+        if override_right then bool_flow.style.horizontal_align = "right" elseif compare_type == "or" then bool_flow.style.horizontal_align =
+            "left" else bool_flow.style.horizontal_align = "right" end
+    end
+
+    local condition_flow = main_container["conditions-column"] or
+    main_container.add { type = "flow", direction = "vertical", name = "conditions-column" }
+
+    local condition_frame = condition_flow.add {
+        type = "frame",
+        style = "train_schedule_station_frame",
+        tags = {
+            type = "condition", condition_index = condition_index, station_index = station_index, ship_id = ship_id, callbacks_filter = callbacks_filter
+        }
+    }
+    condition_frame.style.horizontally_stretchable = true
+
+    local progress = condition_frame.add {
+        type = "progressbar",
+        name = "condition-progress",
+        value = 0,
+        embed_text_in_bar = true,
+        tags = {
+            condition_index = condition_index, station_index = station_index, ship_id = ship_id, callbacks_filter = callbacks_filter
+        },
+    }
+    progress.style.horizontally_stretchable = true
+    progress.style.bar_width = 32
+    progress.style.height = 32
+    progress.style.color = { r = 0, g = 1, b = 0, a = 0.4 }
+    progress.style.font_color = { r = 0, g = 0, b = 0 }
+    progress.style.font = "default-bold"
+    progress.style.horizontal_align = "center"
+    progress.style.vertical_align = "center"
+
+    local row = condition_frame.add {
+        type = "flow",
+        direction = "horizontal",
+        name = "input-flow"
+    }
+    row.style.horizontal_align = "center"
+    row.style.vertical_align = "center"
+
+    row.add {
+        type = "label",
+        caption = ship_captions.time_passed_condition .. " (s)",
+        style = "bold_label"
+    }
+
+    local seconds = math.max(1, math.floor((tonumber(condition.ticks) or (60 * 30)) / 60))
+    local seconds_field = row.add {
+        type = "textfield",
+        name = "time-passed-seconds",
+        text = tostring(seconds),
+        numeric = true,
+        allow_decimal = false,
+        allow_negative = false,
+        style = "console_input_textfield",
+        tags = {
+            condition_index = condition_index, station_index = station_index, ship_id = ship_id, filter = callbacks_filter
+        }
+    }
+    seconds_field.style.horizontal_align = "left"
+    seconds_field.style.minimal_width = 50
+    seconds_field.style.maximal_width = 100
+
+    add_move_up_down_buttons(row, station_index, "condition", condition_index, ship_id, callbacks_filter)
+
+    row.add {
+        type = "sprite-button",
+        name = "remove-condition",
+        sprite = "virtual-signal/signal-X",
+        style = "train_schedule_delete_button",
+        tags = { station_index = station_index, condition_index = condition_index, ship_id = ship_id, filter = callbacks_filter }
+    }
+end
+
 
 
 local function add_conditions(args)
@@ -751,6 +876,15 @@ local function add_conditions(args)
                 callbacks_filter,
                 condition_type == "passenger_present" and ship_captions.passenger_present_condition or
                 ship_captions.passenger_not_present_condition
+            )
+        elseif condition_type == "time_passed" or condition_type == "time" then
+            create_time_condition(
+                condition,
+                i,
+                container,
+                override_right,
+                ship_id,
+                callbacks_filter
             )
         else
             create_constant_condition(
@@ -884,10 +1018,18 @@ function schedule_gui.update_station_progress(station_index, conditions_ratio, p
     apply_progress_to_station_widget(station_widget, conditions_ratio)
 end
 
-function schedule_gui.update_all_station_progress(progress_by_station, player)
+function schedule_gui.update_all_station_progress(progress_by_station, player, expected_ship_id)
     if not (player and player.valid and player.gui and player.gui.relative) then return end
     local schedule_root = player.gui.relative["schedule-container"]
     if not (schedule_root and schedule_root.valid) then return end
+
+    if expected_ship_id ~= nil then
+        local tags = schedule_root.tags or {}
+        if tags.ship_id and tostring(tags.ship_id) ~= tostring(expected_ship_id) then
+            return
+        end
+    end
+
     local inner = schedule_root["schedule-inner-frame"]
     if not (inner and inner.valid) then return end
     local schedule_container = inner["schedule-scroll-pane"]
@@ -946,6 +1088,7 @@ function schedule_gui.reindex_station_widgets(player, ship)
         local start_stop_button = helpers.find_element_down(station_root, "start-stop-button")
         if start_stop_button and start_stop_button.valid then
             start_stop_button.sprite = (current_station == index) and "utility/stop" or "utility/play"
+            start_stop_button.toggled = (current_station == index)
         end
     end
 

@@ -266,6 +266,8 @@ return function(SpaceShip)
                 game.print("No docking port found on the ship.")
             end
 
+            SpaceShip.refresh_ship_storage_capacity(ship)
+
             storage.scan_state = nil
             start_next_queued_scan()
         end
@@ -335,6 +337,7 @@ return function(SpaceShip)
                     if state.preserved_port_records then
                         ship.port_records = state.preserved_port_records
                     end
+                    SpaceShip.refresh_ship_storage_capacity(ship)
                     storage.scan_state = nil
                     start_next_queued_scan()
                     return

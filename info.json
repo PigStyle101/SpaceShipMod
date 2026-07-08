@@ -1,7 +1,7 @@
 {
   "name": "SpaceShipMod",
   "version": "0.1.1",
-  "factorio_version": "2.0",
+  "factorio_version": "2.1",
   "title": "Spaceship Mod",
   "author": "Your Name",
   "description": "Prevents engines on space platforms and creates a new multiblock spaceship from a space platform hub controller.",

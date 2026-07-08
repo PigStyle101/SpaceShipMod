@@ -39,17 +39,28 @@ function Stations.handle_platform_state_change(event)
     local old_state = event.old_state
     local new_state = platform.state
 
+    -- A brand-new platform always starts in waiting_for_starter_pack and only ever
+    -- leaves it once. If the starter pack is already present in the silo when the
+    -- platform is requested (e.g. manually inserted beforehand), Factorio can skip
+    -- straight past starter_pack_requested to starter_pack_on_the_way (or later),
+    -- so trigger on any transition away from waiting_for_starter_pack rather than
+    -- requiring the specific starter_pack_requested state.
     local is_ready_transition =
         old_state == defines.space_platform_state.waiting_for_starter_pack and
-        new_state == defines.space_platform_state.starter_pack_requested
+        new_state ~= defines.space_platform_state.waiting_for_starter_pack
 
-    -- Process starter-pack request transition (0 -> 8 on current runtime mapping)
+    -- Process the platform leaving its initial waiting_for_starter_pack state
     if is_ready_transition then
         -- Skip if this is a ship platform (should have been renamed by SpaceShip.lua)
         if is_ship_platform(platform.name) then
             return -- Ships are handled separately
         end
-        
+
+        -- Already a named station (shouldn't normally re-enter this state, but guard anyway)
+        if is_station_platform(platform.name) then
+            return
+        end
+
         -- Check if this is a new platform that needs to be processed as a station
         local space_location = platform.space_location
         if not space_location then
@@ -84,6 +95,20 @@ function Stations.handle_platform_state_change(event)
     end
 end
 
+-- Check if the force has researched any planet-discovery technology (i.e. travel to
+-- space platforms has been unlocked via research, per vanilla's own gating).
+function Stations.has_discovered_a_planet(force)
+    if not force or not force.valid then return false end
+
+    for name, technology in pairs(force.technologies) do
+        if technology.researched and string.find(name, "^planet%-discovery%-") then
+            return true
+        end
+    end
+
+    return false
+end
+
 -- Check if player has required armor to get off planet
 function Stations.has_spaceship_armor(player)
     if not player or not player.valid then return false end
@@ -96,8 +121,8 @@ function Stations.has_spaceship_armor(player)
     local armor = armor_inventory[1]
     if not armor or not armor.valid_for_read then return false end
     
-    -- Check if armor is the required type (spaceship-armor)
-    return armor.name == "spaceship-armor" or armor.name == "space-armor"
+    -- Check if armor is an accepted type (spaceship-armor, space-armor, or mech-armor)
+    return armor.name == "spaceship-armor" or armor.name == "space-armor" or armor.name == "mech-armor"
 end
 
 -- Function to initialize station management (call this from control.lua)

@@ -1,6 +1,71 @@
 return function(SpaceShip)
+    local DEFAULT_TIME_WAIT_TICKS = 60 * 30
+
+    local function deep_copy(value, seen)
+        if type(value) ~= "table" then return value end
+        seen = seen or {}
+        if seen[value] then return seen[value] end
+
+        local copy = {}
+        seen[value] = copy
+        for k, v in pairs(value) do
+            copy[deep_copy(k, seen)] = deep_copy(v, seen)
+        end
+        return setmetatable(copy, getmetatable(value))
+    end
+
     local function normalize_condition_type(condition_type)
-        return string.gsub(string.lower(tostring(condition_type or "")), "[%s%-]+", "_")
+        local normalized = string.gsub(string.lower(tostring(condition_type or "")), "[%s%-]+", "_")
+        if normalized == "time" then
+            return "time_passed"
+        end
+        return normalized
+    end
+
+    local function get_time_wait_ticks(condition)
+        local ticks = tonumber(condition and condition.ticks)
+        if not ticks and condition and condition.condition and condition.condition.constant then
+            ticks = tonumber(condition.condition.constant)
+        end
+        if not ticks then
+            ticks = DEFAULT_TIME_WAIT_TICKS
+        end
+        ticks = math.floor(ticks)
+        if ticks < 1 then ticks = 1 end
+        return ticks
+    end
+
+    local function reset_time_wait_conditions_for_station(ship, station_index)
+        if not (ship and ship.schedule and ship.schedule.records) then return end
+        local station = ship.schedule.records[station_index]
+        if not (station and station.wait_conditions) then return end
+
+        for _, condition in pairs(station.wait_conditions) do
+            if normalize_condition_type(condition and condition.type) == "time_passed" then
+                condition.started_tick = nil
+            end
+        end
+    end
+
+    local function get_station_visit_key(ship)
+        if not (ship and ship.schedule and ship.schedule.current and ship.surface and ship.surface.valid) then
+            return nil
+        end
+        return tostring(ship.schedule.current) .. ":" .. tostring(ship.surface.index)
+    end
+
+    local function is_ship_at_station_record(ship, station_record)
+        if not (ship and station_record and station_record.station and ship.automatic) then
+            return false
+        end
+        if ship.own_surface then
+            return false
+        end
+        if not (ship.surface and ship.surface.valid and ship.surface.platform and ship.surface.platform.space_location) then
+            return false
+        end
+
+        return ship.surface.platform.space_location.name == station_record.station
     end
 
     local function normalize_wait_conditions_in_schedule(schedule)
@@ -12,10 +77,42 @@ return function(SpaceShip)
                     if condition and condition.type then
                         condition.type = normalize_condition_type(condition.type)
                     end
+                    if condition and normalize_condition_type(condition and condition.type) == "time_passed" then
+                        condition.ticks = get_time_wait_ticks(condition)
+                        condition.condition = nil
+                    end
                 end
             end
         end
         schedule._conditions_normalized = true
+    end
+
+    function SpaceShip.to_native_schedule(schedule)
+        if not schedule then return nil end
+
+        local native = deep_copy(schedule)
+        if not native.records then return native end
+
+        for _, record in pairs(native.records) do
+            if record and record.wait_conditions then
+                for _, condition in pairs(record.wait_conditions) do
+                    if condition then
+                        local condition_type = normalize_condition_type(condition.type)
+                        if condition_type == "time_passed" then
+                            condition.type = "time"
+                            condition.ticks = get_time_wait_ticks(condition)
+                            condition.condition = nil
+                            condition.started_tick = nil
+                        else
+                            condition.type = condition_type
+                        end
+                    end
+                end
+            end
+        end
+
+        native._conditions_normalized = nil
+        return native
     end
 
     local function mark_schedule_conditions_dirty(ship)
@@ -137,6 +234,12 @@ return function(SpaceShip)
                 passenger_on_ship = is_player_on_ship(ship)
             end
             return passenger_on_ship
+        elseif condition_type == "time_passed" then
+            local ticks_required = get_time_wait_ticks(condition)
+            if not condition.started_tick then
+                condition.started_tick = game.tick
+            end
+            return (game.tick - condition.started_tick) >= ticks_required
         end
 
         if condition and condition.condition and condition.condition.first_signal then
@@ -251,7 +354,7 @@ return function(SpaceShip)
             }
         end
         if ship.platform then
-            ship.platform.schedule = ship.schedule
+            ship.platform.schedule = SpaceShip.to_native_schedule(ship.schedule)
         end
         mark_schedule_conditions_dirty(ship)
     end
@@ -323,6 +426,9 @@ return function(SpaceShip)
         for station_index, station in pairs(ship.schedule.records) do
             if station.wait_conditions then
                 progress[station_index] = {}
+                local station_is_active = ship.automatic and
+                    tonumber(ship.schedule.current) == tonumber(station_index) and
+                    is_ship_at_station_record(ship, station)
 
                 for condition_index, condition in pairs(station.wait_conditions) do
                     local progress_value = 0
@@ -336,6 +442,17 @@ return function(SpaceShip)
                             progress_value = (not passenger_on_ship) and 1 or 0
                         else
                             progress_value = passenger_on_ship and 1 or 0
+                        end
+                    elseif condition_type == "time_passed" then
+                        local ticks_required = get_time_wait_ticks(condition)
+                        if station_is_active then
+                            if not condition.started_tick then
+                                condition.started_tick = game.tick
+                            end
+                            progress_value = (game.tick - condition.started_tick) / ticks_required
+                        else
+                            condition.started_tick = nil
+                            progress_value = 0
                         end
                     elseif condition and condition.condition and condition.condition.first_signal then
                         local signal_value = tonumber(signals[condition.condition.first_signal.name]) or 0
@@ -397,12 +514,24 @@ return function(SpaceShip)
             return false
         end
 
+        if not ship.docked then
+            ship._time_wait_station_visit_key = nil
+        end
+
         normalize_wait_conditions_in_schedule(ship.schedule)
+
+        local visit_key = get_station_visit_key(ship)
+        if visit_key and ship._time_wait_station_visit_key ~= visit_key then
+            reset_time_wait_conditions_for_station(ship, ship.schedule.current)
+            ship._time_wait_station_visit_key = visit_key
+        end
 
         local current_station = ship.schedule.records[ship.schedule.current]
         if not current_station or not current_station.wait_conditions then
             return true -- No conditions means conditions are satisfied
         end
+
+        local station_is_active = is_ship_at_station_record(ship, current_station)
 
         -- If the station has no conditions (empty table), return true
         if #current_station.wait_conditions == 0 then
@@ -428,6 +557,11 @@ return function(SpaceShip)
                 end
 
                 local condition_met = evaluate_wait_condition(ship, condition, signals, passenger_on_ship)
+
+                if condition_type == "time_passed" and not station_is_active then
+                    condition.started_tick = nil
+                    condition_met = false
+                end
 
                 if condition.compare_type == "and" then
                     -- Combine with the temporary `and` result
@@ -503,7 +637,7 @@ return function(SpaceShip)
                     local platform = ship.hub.surface.platform
                     if platform then
                         normalize_wait_conditions_in_schedule(schedule)
-                        platform.schedule = schedule
+                        platform.schedule = SpaceShip.to_native_schedule(schedule)
                         platform.paused = false
                     end
                 end
@@ -522,7 +656,9 @@ return function(SpaceShip)
             compare_type = "and"
         }
 
-        if normalized ~= "passenger_not_present" and normalized ~= "passenger_present" then
+        if normalized == "time_passed" then
+            wait_condition.ticks = DEFAULT_TIME_WAIT_TICKS
+        elseif normalized ~= "passenger_not_present" and normalized ~= "passenger_present" then
             wait_condition.condition = {
                 first_signal = {
                     type = "virtual",
@@ -625,7 +761,7 @@ return function(SpaceShip)
         -- If ship is already on its own moving platform, immediately resume travel
         -- to the newly selected destination.
         if ship.own_surface and ship.surface and ship.surface.platform then
-            ship.surface.platform.schedule = ship.schedule
+            ship.surface.platform.schedule = SpaceShip.to_native_schedule(ship.schedule)
             ship.surface.platform.paused = false
         end
     end
@@ -669,7 +805,34 @@ return function(SpaceShip)
             return
         end
 
-        ship.schedule.records[station_index].wait_conditions[condition_index].condition.constant = value
+        local condition = ship.schedule.records[station_index].wait_conditions[condition_index]
+        if condition and condition.condition then
+            condition.condition.constant = value
+        end
+        mark_schedule_conditions_dirty(ship)
+    end
+
+    function SpaceShip.time_changed(ship, station_index, condition_index, seconds)
+        if not ship.schedule.records[station_index] or
+            not ship.schedule.records[station_index].wait_conditions or
+            not ship.schedule.records[station_index].wait_conditions[condition_index] then
+            return
+        end
+
+        local condition = ship.schedule.records[station_index].wait_conditions[condition_index]
+        if normalize_condition_type(condition and condition.type) ~= "time_passed" then
+            return
+        end
+
+        local amount = tonumber(seconds)
+        if not amount then
+            return
+        end
+
+        local ticks = math.floor(amount * 60)
+        if ticks < 1 then ticks = 1 end
+        condition.ticks = ticks
+        condition.started_tick = nil
         mark_schedule_conditions_dirty(ship)
     end
 

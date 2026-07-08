@@ -181,6 +181,16 @@ return function(SpaceShip)
         storage.clone_job_queue[#storage.clone_job_queue + 1] = job
     end
 
+    local function set_entity_active(entity, active)
+        if not (entity and entity.valid) then return false end
+
+        local ok, err = pcall(function()
+            entity.active = active
+        end)
+
+        return ok, err
+    end
+
     local function queue_entities_for_restore_and_pause(entities, tick)
         if not entities or #entities == 0 then return end
 
@@ -200,8 +210,7 @@ return function(SpaceShip)
                     if unit_number then
                         storage.entities_to_restore_lookup[unit_number] = true
                     end
-                end
-                entity.active = false
+                end                set_entity_active(entity, false)
             end
         end
     end
@@ -656,6 +665,7 @@ return function(SpaceShip)
                 local tags = ship.hub.tags or {}
                 tags.id = ship.id
                 ship.hub.tags = tags
+                SpaceShip.refresh_ship_storage_capacity(ship)
             end
 
             apply_ship_wire_snapshot(job.wire_snapshot, job.dest_surface, job.offset)
@@ -673,7 +683,7 @@ return function(SpaceShip)
 
             local platform = ship.hub and ship.hub.valid and ship.hub.surface and ship.hub.surface.platform or nil
             if platform then
-                platform.schedule = ship.schedule
+                platform.schedule = SpaceShip.to_native_schedule(ship.schedule)
                 platform.paused = false
             end
 

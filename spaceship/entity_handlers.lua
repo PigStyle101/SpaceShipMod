@@ -1,4 +1,88 @@
 return function(SpaceShip)
+    local DOCKING_PORT_NORTH = 0
+    local DOCKING_PORT_EAST = 4
+    local DOCKING_PORT_SOUTH = 8
+    local DOCKING_PORT_WEST = 12
+
+    local function normalize_docking_port_direction(raw_direction, preferred_direction)
+        local direction = raw_direction or DOCKING_PORT_EAST
+        if direction == DOCKING_PORT_EAST or direction == DOCKING_PORT_WEST then
+            return direction, false
+        end
+
+        if preferred_direction == DOCKING_PORT_EAST or preferred_direction == DOCKING_PORT_WEST then
+            return preferred_direction, true
+        end
+
+        if direction == DOCKING_PORT_NORTH then
+            return DOCKING_PORT_EAST, true
+        end
+
+        if direction == DOCKING_PORT_SOUTH then
+            return DOCKING_PORT_WEST, true
+        end
+
+        if direction < DOCKING_PORT_SOUTH then
+            return DOCKING_PORT_EAST, true
+        end
+
+        return DOCKING_PORT_WEST, true
+    end
+
+    function SpaceShip.enforce_docking_port_direction(entity, preferred_direction)
+        if not (entity and entity.valid) then return false end
+
+        local is_docking_port = false
+        if entity.type == "entity-ghost" then
+            is_docking_port = entity.ghost_name == "spaceship-docking-port"
+        else
+            is_docking_port = entity.name == "spaceship-docking-port"
+        end
+        if not is_docking_port then return false end
+
+        local target_direction, changed = normalize_docking_port_direction(entity.direction, preferred_direction)
+        if changed then
+            entity.direction = target_direction
+        end
+
+        return changed
+    end
+
+    function SpaceShip.toggle_docking_port_direction(entity, previous_direction)
+        if not (entity and entity.valid and entity.name == "spaceship-docking-port") then return false end
+
+        if previous_direction == DOCKING_PORT_EAST then
+            if entity.direction ~= DOCKING_PORT_WEST then
+                entity.direction = DOCKING_PORT_WEST
+                return true
+            end
+            return false
+        end
+
+        if previous_direction == DOCKING_PORT_WEST then
+            if entity.direction ~= DOCKING_PORT_EAST then
+                entity.direction = DOCKING_PORT_EAST
+                return true
+            end
+            return false
+        end
+
+        local target_direction = DOCKING_PORT_EAST
+        if entity.direction == DOCKING_PORT_EAST then
+            target_direction = DOCKING_PORT_WEST
+        elseif entity.direction == DOCKING_PORT_WEST then
+            target_direction = DOCKING_PORT_EAST
+        elseif entity.direction == DOCKING_PORT_SOUTH then
+            target_direction = DOCKING_PORT_WEST
+        end
+
+        if entity.direction ~= target_direction then
+            entity.direction = target_direction
+            return true
+        end
+        return false
+    end
+
     local function deep_copy(value, seen)
         if type(value) ~= "table" then return value end
         seen = seen or {}
@@ -113,8 +197,10 @@ return function(SpaceShip)
             else
                 game.print("Unable to spawn spaceship control hub car!")
             end
+            SpaceShip.refresh_ship_storage_capacity(my_ship)
         end
         if entity.name == "spaceship-docking-port" then
+            SpaceShip.enforce_docking_port_direction(entity)
             SpaceShip.register_docking_port(entity)
             SpaceShip.connect_adjacent_ports()
         end
@@ -137,6 +223,9 @@ return function(SpaceShip)
                 end
                 if found then
                     ship.scanned = false
+                    if entity.name == "spaceship-storage-link" then
+                        SpaceShip.refresh_ship_storage_capacity(ship)
+                    end
                 end
             end
         end
@@ -187,6 +276,9 @@ return function(SpaceShip)
                 end
                 if found then
                     ship.scanned = false
+                    if entity.name == "spaceship-storage-link" then
+                        SpaceShip.refresh_ship_storage_capacity(ship)
+                    end
                 end
             end
         end
@@ -194,6 +286,8 @@ return function(SpaceShip)
 
     function SpaceShip.handle_ghost_entity(ghost, player)
         if not (ghost and ghost.valid) then return end
+
+        SpaceShip.enforce_docking_port_direction(ghost)
 
         -- Check thruster ghost placement restrictions
         if ghost.ghost_name == "thruster" then
@@ -270,7 +364,7 @@ return function(SpaceShip)
             if source_ship.schedule then
                 destination_ship.schedule = deep_copy(source_ship.schedule)
                 if destination_ship.platform and destination_ship.platform.valid then
-                    destination_ship.platform.schedule = deep_copy(source_ship.schedule)
+                    destination_ship.platform.schedule = SpaceShip.to_native_schedule(destination_ship.schedule)
                 end
             else
                 destination_ship.schedule = {}
@@ -302,6 +396,13 @@ return function(SpaceShip)
             else
                 game.print(message)
             end
+
+            SpaceShip.enforce_docking_port_direction(destination)
+            return
+        end
+
+        if source.name == "spaceship-storage-link" and destination.name == "spaceship-storage-link" then
+            SpaceShip.refresh_all_ship_storage_capacities()
             return
         end
     end
