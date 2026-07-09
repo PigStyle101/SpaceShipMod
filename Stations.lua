@@ -78,6 +78,7 @@ function Stations.handle_platform_state_change(event)
             local new_station_name = planet_name .. "-station"
             platform.name = new_station_name
             game.print("[color=green]Created first station for " .. planet_name .. ": " .. new_station_name .. "[/color]")
+            game.print("[color=yellow]Only one station is allowed per planet. Any additional platforms that arrive in orbit of " .. planet_name .. " will be automatically destroyed.[/color]")
         else
             -- There's already a station for this planet, delete the new one
             game.print("[color=yellow]A station already exists for " .. planet_name .. ". Removing duplicate station platform.[/color]")
@@ -143,6 +144,7 @@ function Stations.enforce_station_hub_controls()
         for _, platform in pairs(force.platforms) do
             if platform and platform.valid and is_station_platform(platform.name) then
                 local key = force.name .. "/" .. platform.name
+                local is_first_check = storage.station_control_state[key] == nil
                 local state = storage.station_control_state[key] or {
                     warned_schedule = false,
                     warned_auto = false
@@ -169,7 +171,11 @@ function Stations.enforce_station_hub_controls()
 
                 if not platform.paused then
                     platform.paused = true
-                    if not state.warned_auto then
+                    -- Don't warn on the platform's initial (system-forced) pause, since the
+                    -- player didn't do anything here; a new station always starts unpaused.
+                    if is_first_check then
+                        state.warned_auto = false
+                    elseif not state.warned_auto then
                         game.print("[color=red]Station platforms cannot be set to automatic travel.[/color]")
                         state.warned_auto = true
                     end

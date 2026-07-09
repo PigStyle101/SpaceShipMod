@@ -494,6 +494,14 @@ return function(SpaceShip)
                 return
             end
 
+            -- Clear out any asteroids sitting in the destination area before cloning; leftover
+            -- asteroids would otherwise collide with the newly cloned ship entities/tiles.
+            for _, asteroid in pairs(job.dest_surface.find_entities_filtered { type = "asteroid", area = job.dest_area }) do
+                if asteroid and asteroid.valid then
+                    asteroid.destroy()
+                end
+            end
+
             if job.change_tiles_dest and #job.change_tiles_dest > 0 then
                 job.tile_index = job.tile_index or 1
                 job.phase = "apply_tiles"
@@ -976,6 +984,14 @@ return function(SpaceShip)
 
         dest_surface.request_to_generate_chunks(dest_center, math.ceil(math.max(max_x - min_x, max_y - min_y) / 32) + 2)
         dest_surface.force_generate_chunk_requests()
+
+        -- Clear out any asteroids sitting in the destination area before cloning; leftover
+        -- asteroids would otherwise collide with the newly cloned ship entities/tiles.
+        for _, asteroid in pairs(dest_surface.find_entities_filtered { type = "asteroid", area = dest_area }) do
+            if asteroid and asteroid.valid then
+                asteroid.destroy()
+            end
+        end
 
         local change_tiles_dest = {}
         local ship_floor_lookup = {}

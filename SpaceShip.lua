@@ -2,12 +2,6 @@ local SpaceShip                 = {}
 SpaceShip.__index               = SpaceShip
 local SpaceShipFunctions        = require("SpaceShipFunctionsScript")
 
-local DROP_COST                 = {
-    ["rocket-fuel"] = 20,
-    ["processing-unit"] = 20,
-    ["low-density-structure"] = 20
-}
-
 SpaceShip.hub                   = nil
 SpaceShip.floor                 = {}                         -- Table to store floor tiles
 SpaceShip.walls                 = {}                         -- Table to store wall tiles
@@ -93,7 +87,7 @@ require("spaceship/docking_ports")(SpaceShip)
 require("spaceship/schedule")(SpaceShip)
 require("spaceship/cloning")(SpaceShip)
 require("spaceship/docking_travel")(SpaceShip)
-require("spaceship/drops")(SpaceShip, DROP_COST)
+require("spaceship/drops")(SpaceShip)
 require("spaceship/entity_handlers")(SpaceShip)
 require("spaceship/storage")(SpaceShip)
 

@@ -365,9 +365,19 @@ return function(SpaceShip)
             return
         end
 
-        if not ship.schedule.records[station_index] then
+        local deleted_record = ship.schedule.records[station_index]
+        if not deleted_record then
             game.print("Error: Station index " .. station_index .. " does not exist in the schedule.")
             return
+        end
+
+        -- Check if the ship is currently orbiting the planet whose station is about to be
+        -- removed from the schedule, before we mutate the records.
+        local ship_orbiting_deleted_station = false
+        if deleted_record.station and ship.surface and ship.surface.valid and
+            ship.surface.platform and ship.surface.platform.valid and
+            ship.surface.platform.space_location then
+            ship_orbiting_deleted_station = ship.surface.platform.space_location.name == deleted_record.station
         end
 
         table.remove(ship.schedule.records, station_index)
@@ -380,6 +390,14 @@ return function(SpaceShip)
         ship.schedule.records = temp_schedule
         mark_schedule_conditions_dirty(ship)
 
+        -- If the station the ship is currently orbiting was just removed from the schedule, the
+        -- schedule can no longer guide it from here; force manual mode rather than letting it
+        -- keep trying to operate on an invalid automatic schedule.
+        if ship_orbiting_deleted_station and ship.automatic then
+            SpaceShip.set_automatic_mode(ship, false)
+            game.print(
+                "[color=yellow]Removed the station the ship was orbiting from its schedule; switching to manual mode.[/color]")
+        end
     end
 
     function SpaceShip.read_circuit_signals(entity)

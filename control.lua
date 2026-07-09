@@ -156,6 +156,17 @@ script.on_event(defines.events.on_space_platform_mined_entity, function(event)
     SpaceShip.handle_mined_entity(event.entity)
 end)
 
+-- Entities can also be destroyed by damage (asteroids, biters, explosions, etc.) rather than
+-- mined. Run the same registry cleanup here so we don't leave stale docking_ports/spaceships
+-- entries referencing invalid entities (which caused "invalid" errors when opening ship GUIs).
+-- Filtered to our own entity names so this doesn't run for every death in the game.
+script.on_event(defines.events.on_entity_died, function(event)
+    SpaceShip.handle_mined_entity(event.entity)
+end, {
+    { filter = "name", name = "spaceship-docking-port" },
+    { filter = "name", name = "spaceship-control-hub" }
+})
+
 script.on_event(defines.events.on_player_rotated_entity, function(event)
     local entity = event.entity
     if not (entity and entity.valid and entity.name == "spaceship-docking-port") then return end
@@ -211,7 +222,8 @@ script.on_event(defines.events.on_gui_opened, function(event)
     end
 
     if opened_entity and opened_entity.valid and opened_entity.name == "rocket-silo" then
-        if Stations.has_discovered_a_planet(player.force) and not Stations.has_spaceship_armor(player) then
+        if player.controller_type ~= defines.controllers.remote and
+            Stations.has_discovered_a_planet(player.force) and not Stations.has_spaceship_armor(player) then
             player.print("[color=red]Warning: You are not wearing a Space Suit or Mech Armor. You will not be able to travel to space and will waste a rocket if you try.[/color]")
         end
     end
@@ -220,6 +232,9 @@ end)
 script.on_event(defines.events.on_tick, function(event)
     storage.highlight_data = storage.highlight_data or {}
     storage.temp_platform_hubs_cleanup = storage.temp_platform_hubs_cleanup or {}
+
+    SpaceShip.process_pending_thruster_ghost_checks()
+    SpaceShip.process_pending_cargo_pod_launches()
 
     if #storage.temp_platform_hubs_cleanup > 0 then
         for i = #storage.temp_platform_hubs_cleanup, 1, -1 do
@@ -394,7 +409,25 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
             -- Player entered the cockpit
             --SpaceShipGuis.create_spaceship_gui(player)
         else
-            ship.player_in_cockpit = nil
+            -- Player is trying to leave the control hub. Only allow this while the ship is
+            -- docked at a planet; otherwise force them back in so they can't strand
+            -- themselves outside the ship mid-flight/orbit.
+            if not ship.docked and vehicle.valid then
+                local put_back = false
+                pcall(function()
+                    vehicle.set_driver(player)
+                    put_back = true
+                end)
+                if put_back then
+                    ship.player_in_cockpit = player
+                    player.print(
+                        "[color=red]You cannot leave the control hub while the ship is not docked at a planet.[/color]")
+                else
+                    ship.player_in_cockpit = nil
+                end
+            else
+                ship.player_in_cockpit = nil
+            end
         end
     elseif vehicle.name == "space-platform-hub" then
         storage.recent_rocket_arrival_tick = storage.recent_rocket_arrival_tick or {}

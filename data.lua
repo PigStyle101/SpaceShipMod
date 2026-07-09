@@ -58,8 +58,8 @@ local storageLinkItem = {
     localised_description = "Connected storage module. Each module increases control hub capacity.",
     icon = data.raw["item"]["cargo-bay"].icon,
     icon_size = data.raw["item"]["cargo-bay"].icon_size,
-    subgroup = "storage",
-    order = "a[items]-zz[spaceship-storage-link]",
+    subgroup = data.raw["item"]["cargo-bay"].subgroup,
+    order = "zz[spaceship-storage-link]",
     place_result = "spaceship-storage-link",
     stack_size = 50
 }
@@ -234,11 +234,15 @@ if space_foundation and refined_concrete then
 
     -- Use refined concrete graphics (clean grey appearance, no dirt transitions)
     spaceship_flooring_tile.variants = table.deepcopy(refined_concrete.variants)
-    spaceship_flooring_tile.allows_being_covered = true
+    -- Space platform foundation deliberately disallows being covered by other tiles (concrete,
+    -- stone brick, etc.) so its tile identity stays intact. Keep that same protection here,
+    -- since the mod's scanning/thruster/storage-link checks rely on tile.name being exactly
+    -- "spaceship-flooring" and would otherwise be silently hidden by tiles placed on top.
+    spaceship_flooring_tile.allows_being_covered = false
 end
 
 if data.raw.tile["space-platform-foundation"] then
-    data.raw.tile["space-platform-foundation"].allows_being_covered = true
+    data.raw.tile["space-platform-foundation"].allows_being_covered = false
 end
 
 -- =============================================================================
@@ -368,7 +372,7 @@ data:extend({
                 recipe = "spaceship-storage-link"
             }
         },
-        prerequisites = { "space-science-pack", "power-armor-mk2" },
+        prerequisites = { "space-science-pack", "spaceship-armor-tech" },
         unit = {
             count = 1000,
             ingredients = {
@@ -473,39 +477,6 @@ if data.raw.technology["space-platform-thruster"] then
     data.raw.technology["space-platform-thruster"].prerequisites = { "spaceship-construction" }
 end
 
--- Update power-armor-mk2 technology to reflect spaceship armor
-if data.raw.technology["power-armor-mk2"] then
-    -- Change the technology name and description to reflect spaceship armor
-    data.raw.technology["power-armor-mk2"].localised_name = {"technology-name.spaceship-armor-tech"}
-    data.raw.technology["power-armor-mk2"].localised_description = {"technology-description.spaceship-armor-tech"}
-    
-    -- Use the same dark grey-tinted icon as the spaceship armor
-    data.raw.technology["power-armor-mk2"].icon = nil
-    data.raw.technology["power-armor-mk2"].icons = {
-        {
-            icon = data.raw["armor"]["mech-armor"].icon,
-            icon_size = data.raw["armor"]["mech-armor"].icon_size or 64,
-            tint = {r = 0.4, g = 0.4, b = 0.4, a = 1.0}  -- Dark grey to match armor
-        }
-    }
-end
-
--- Hide the original power-armor-mk2 from all discovery interfaces
-if data.raw.armor["power-armor-mk2"] then
-    data.raw.armor["power-armor-mk2"].hidden = true
-    data.raw.armor["power-armor-mk2"].hidden_in_factoriopedia = true
-end
-
-if data.raw.item["power-armor-mk2"] then
-    data.raw.item["power-armor-mk2"].hidden = true
-    data.raw.item["power-armor-mk2"].hidden_in_factoriopedia = true
-end
-
-if data.raw.recipe["power-armor-mk2"] then
-    data.raw.recipe["power-armor-mk2"].hidden = true
-    data.raw.recipe["power-armor-mk2"].hidden_in_factoriopedia = true
-end
-
 -- =============================================================================
 -- CORE GAME ENTITY MODIFICATIONS
 -- =============================================================================
@@ -525,6 +496,15 @@ if data.raw.thruster and data.raw.thruster.thruster then
     end
 end
 
+-- Note that mech-armor is accepted as valid spaceship travel armor (see
+-- Stations.has_spaceship_armor), so its description should reflect that.
+if data.raw.armor and data.raw.armor["mech-armor"] then
+    data.raw.armor["mech-armor"].localised_description = { "",
+        data.raw.armor["mech-armor"].localised_description or "",
+        "\n[color=yellow]Can be used to travel to and from space.[/color]"
+    }
+end
+
 -- =============================================================================
 -- SPACESHIP ARMOR
 -- =============================================================================
@@ -540,24 +520,42 @@ spaceshipArmor.icons = {
     }
 }
 spaceshipArmor.icon = nil  -- Remove single icon since we're using icons array
+-- Position the Space Suit right after power-armor-mk2 ("e[power-armor-mk2]") and
+-- before mech-armor ("f[mech-armor]") in crafting/inventory listings.
+spaceshipArmor.order = "e[spaceship-armor]"
 
--- Make the Space Suit exactly half as capable as mech-armor in every quantifiable way:
--- half damage resistances, half inventory bonus, and a half-size equipment grid.
-if spaceshipArmor.resistances then
+-- Make the Space Suit the middle ground between power-armor-mk2 and mech-armor
+-- in every quantifiable way: resistances, inventory bonus, and equipment grid
+-- size are each the average of the two armors' values.
+local powerArmorMk2 = data.raw["armor"]["power-armor-mk2"]
+if spaceshipArmor.resistances and powerArmorMk2 and powerArmorMk2.resistances then
     for _, resistance in pairs(spaceshipArmor.resistances) do
-        resistance.decrease = (resistance.decrease or 0) / 2
-        resistance.percent = (resistance.percent or 0) / 2
+        local mk2_resistance = nil
+        for _, candidate in pairs(powerArmorMk2.resistances) do
+            if candidate.type == resistance.type then
+                mk2_resistance = candidate
+                break
+            end
+        end
+        if mk2_resistance then
+            resistance.decrease = ((resistance.decrease or 0) + (mk2_resistance.decrease or 0)) / 2
+            resistance.percent = ((resistance.percent or 0) + (mk2_resistance.percent or 0)) / 2
+        end
     end
 end
-spaceshipArmor.inventory_size_bonus = (spaceshipArmor.inventory_size_bonus or 0) / 2
+if powerArmorMk2 then
+    spaceshipArmor.inventory_size_bonus = ((spaceshipArmor.inventory_size_bonus or 0) + (powerArmorMk2.inventory_size_bonus or 0)) / 2
+end
 
 local mechArmorGrid = data.raw["equipment-grid"][spaceshipArmor.equipment_grid]
-if mechArmorGrid then
-    local halfGrid = table.deepcopy(mechArmorGrid)
-    halfGrid.name = "spaceship-armor-equipment-grid"
-    halfGrid.height = math.max(1, math.floor(halfGrid.height / 2))
-    spaceshipArmor.equipment_grid = halfGrid.name
-    data:extend({halfGrid})
+local mk2ArmorGrid = powerArmorMk2 and data.raw["equipment-grid"][powerArmorMk2.equipment_grid] or nil
+if mechArmorGrid and mk2ArmorGrid then
+    local midGrid = table.deepcopy(mechArmorGrid)
+    midGrid.name = "spaceship-armor-equipment-grid"
+    midGrid.width = math.max(1, math.floor((mechArmorGrid.width + mk2ArmorGrid.width) / 2))
+    midGrid.height = math.max(1, math.floor((mechArmorGrid.height + mk2ArmorGrid.height) / 2))
+    spaceshipArmor.equipment_grid = midGrid.name
+    data:extend({midGrid})
 end
 
 -- Now I understand how armor visuals work in Factorio 2.0!
@@ -624,15 +622,16 @@ if data.raw["character"] and data.raw["character"]["character"] then
     end
 end
 
--- Create spaceship armor recipe (uses power-armor-mk2 ingredients since it's replacing it)
+-- Create spaceship armor recipe (independent item, crafted up from power-armor-mk2)
 local spaceshipArmorRecipe = table.deepcopy(data.raw["recipe"]["mech-armor"])
 spaceshipArmorRecipe.name = "spaceship-armor"
 spaceshipArmorRecipe.results = { {type = "item", name = "spaceship-armor", amount = 1} }
 
--- Use the exact same ingredients as power-armor-mk2 since this is replacing it, plus a
--- required power-armor to craft up from (matches the Space Suit being a lesser armor).
+-- Costs similar to mech-armor, plus a required power-armor-mk2 to craft up
+-- from (matches the Space Suit being the middle ground between the two), but
+-- this is a standalone recipe/item and does not replace or hide power-armor-mk2.
 spaceshipArmorRecipe.ingredients = {
-    {type = "item", name = "power-armor", amount = 1},
+    {type = "item", name = "power-armor-mk2", amount = 1},
     {type = "item", name = "efficiency-module-2", amount = 25},
     {type = "item", name = "electric-engine-unit", amount = 40},
     {type = "item", name = "low-density-structure", amount = 30},
@@ -641,31 +640,73 @@ spaceshipArmorRecipe.ingredients = {
 }
 spaceshipArmorRecipe.energy_required = 25
 
+spaceshipArmorRecipe.enabled = false
+
+-- Independent Space Suit technology (does not touch/replace power-armor-mk2)
+local spaceshipArmorTech = {
+    type = "technology",
+    name = "spaceship-armor-tech",
+    localised_name = {"technology-name.spaceship-armor-tech"},
+    localised_description = {"technology-description.spaceship-armor-tech"},
+    icon = nil,
+    icons = {
+        {
+            icon = data.raw["armor"]["mech-armor"].icon,
+            icon_size = data.raw["armor"]["mech-armor"].icon_size or 64,
+            tint = {r = 0.4, g = 0.4, b = 0.4, a = 1.0}  -- Dark grey to match armor
+        }
+    },
+    effects = {
+        {
+            type = "unlock-recipe",
+            recipe = "spaceship-armor"
+        }
+    },
+    prerequisites = { "space-science-pack", "power-armor-mk2" },
+    unit = {
+        count = 500,
+        ingredients = {
+            { "automation-science-pack", 1 },
+            { "logistic-science-pack",   1 },
+            { "chemical-science-pack",   1 },
+            { "production-science-pack", 1 },
+            { "space-science-pack",      1 }
+        },
+        time = 30
+    },
+    order = "e-g-a"
+}
+
 data:extend({
     spaceshipArmor,
-    spaceshipArmorRecipe
+    spaceshipArmorRecipe,
+    spaceshipArmorTech
 })
 
--- =============================================================================
--- RECIPE AND TECHNOLOGY MODIFICATIONS
--- =============================================================================
-
--- Replace power-armor-mk2 in technology effects (immediate replacements)
-if data.raw.technology then
-    for _, tech in pairs(data.raw.technology) do
-        if tech.effects then
-            for _, effect in pairs(tech.effects) do
-                if effect.type == "unlock-recipe" and effect.recipe == "power-armor-mk2" then
-                    effect.recipe = "spaceship-armor"
-                end
-            end
+-- Mech-armor now crafts up from spaceship-armor (Space Suit) instead of
+-- power-armor-mk2 directly, since the Space Suit is the new middle-tier armor
+-- between the two. Its technology prerequisite is updated to match, so
+-- researching spaceship-armor-tech (which itself requires power-armor-mk2) is
+-- what gates mech-armor research.
+local mechArmorRecipe = data.raw.recipe and data.raw.recipe["mech-armor"]
+if mechArmorRecipe and mechArmorRecipe.ingredients then
+    for _, ingredient in pairs(mechArmorRecipe.ingredients) do
+        if ingredient.name == "power-armor-mk2" then
+            ingredient.name = "spaceship-armor"
+        elseif ingredient[1] == "power-armor-mk2" then
+            ingredient[1] = "spaceship-armor"
         end
     end
 end
 
--- =============================================================================
--- NOTE: Global power-armor-mk2 replacement is handled in data-final-fixes.lua
--- =============================================================================
+local mechArmorTech = data.raw.technology and data.raw.technology["mech-armor"]
+if mechArmorTech and mechArmorTech.prerequisites then
+    for i, prerequisite in ipairs(mechArmorTech.prerequisites) do
+        if prerequisite == "power-armor-mk2" then
+            mechArmorTech.prerequisites[i] = "spaceship-armor-tech"
+        end
+    end
+end
 
 -- =============================================================================
 -- TIPS AND TRICKS

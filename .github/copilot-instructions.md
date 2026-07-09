@@ -59,7 +59,7 @@
 
 ## Integration points and dependencies
 - Required dependencies are in `info.json`: `space-age`.
-- Cross-mod compatibility logic in `data-final-fixes.lua` globally replaces `power-armor-mk2` recipe/tech references with `spaceship-armor`.
+- Space Suit (`spaceship-armor`) is a fully independent item/recipe/technology with its own `spaceship-armor-tech`; it does not replace, hide, or rewrite `power-armor-mk2` or any cross-mod recipes/technologies.
 - Docking/automation interacts with Space Age platform state transitions (`on_space_platform_changed_state`).
 
 ## Developer workflow (repo-specific)

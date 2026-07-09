@@ -8,7 +8,8 @@ local function build_docks_table()
     storage.docking_ports = storage.docking_ports or {}
 
     for _, value in pairs(storage.docking_ports) do
-        if value.name ~= "ship" and value.surface and value.surface.platform and value.surface.platform.space_location then
+        if value.name ~= "ship" and value.entity and value.entity.valid and
+            value.surface and value.surface.valid and value.surface.platform and value.surface.platform.space_location then
             local location_name = value.surface.platform.space_location.name
             docks_table[location_name] = docks_table[location_name] or { names = {} }
             seen_per_planet[location_name] = seen_per_planet[location_name] or {}
@@ -55,7 +56,8 @@ function SpaceShipGuis.on_station_selected(event)
         if station_index then
             local first_port = nil
             for unit_number, port_data in pairs(storage.docking_ports or {}) do
-                if port_data.surface and port_data.surface.platform and 
+                if port_data.entity and port_data.entity.valid and
+                   port_data.surface and port_data.surface.valid and port_data.surface.platform and
                    port_data.surface.platform.space_location and
                    port_data.surface.platform.space_location.name == event.selected_station and
                    port_data.name ~= "ship" then
@@ -335,25 +337,6 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
     if ship.own_surface then
         custom_gui.add { type = "button", name = "drop-player-to-planet", caption = "Drop player to Planet", tags = { ship = ship_tag_number } }
 
-        local drop_slots_flow = custom_gui.add {
-            type = "flow",
-            name = "drop-slot-limit-flow",
-            direction = "horizontal"
-        }
-        drop_slots_flow.add {
-            type = "label",
-            caption = "Drop slots:"
-        }
-        drop_slots_flow.add {
-            type = "textfield",
-            name = "drop-slot-limit-input",
-            text = tostring(ship.drop_slot_limit or 10),
-            numeric = true,
-            allow_decimal = false,
-            allow_negative = false,
-            tooltip = "Only the first N hub inventory slots will be dropped"
-        }
-
         custom_gui.add { type = "button", name = "drop-items-to-planet", caption = "Drop items to Planet", tags = { ship = ship_tag_number } }
     end
 end
@@ -410,30 +393,7 @@ function SpaceShipGuis.handle_button_click(event)
         SpaceShip.drop_player_to_planet(ship)
     elseif button_name == "drop-items-to-planet" then
         local ship = storage.spaceships[event.element.tags.ship]
-        local slot_limit
-        local invalid_slot_input = false
-        local parent = event.element.parent
-        if parent and parent.valid and parent["drop-slot-limit-flow"] and parent["drop-slot-limit-flow"].valid then
-            local input = parent["drop-slot-limit-flow"]["drop-slot-limit-input"]
-            if input and input.valid then
-                local value = tonumber(input.text)
-                if value and value > 0 then
-                    slot_limit = math.floor(value)
-                elseif input.text ~= "" then
-                    invalid_slot_input = true
-                end
-            end
-        end
-
-        if ship then
-            if invalid_slot_input then
-                slot_limit = ship.drop_slot_limit or 10
-                game.print("[color=yellow]Invalid drop slot limit. Using " .. tostring(slot_limit) .. " slot(s).[/color]")
-            end
-            ship.drop_slot_limit = slot_limit
-        end
-
-        SpaceShip.drop_items_to_planet(ship, slot_limit)
+        SpaceShip.drop_items_to_planet(ship)
     elseif button_name == "close-dock-gui" then
         SpaceShipGuis.close_docking_port_gui(player)
     end
@@ -564,7 +524,7 @@ function SpaceShipGuis.gui_maker_handler(ship, player_id)
         storage.docking_ports = {}
     end
     for _, value in pairs(storage.docking_ports) do
-        if value and value.name ~= "ship" then
+        if value and value.name ~= "ship" and value.entity and value.entity.valid then
             local port_surface = value.surface
             local platform = port_surface and port_surface.valid and port_surface.platform or nil
             local space_location = platform and platform.space_location or nil

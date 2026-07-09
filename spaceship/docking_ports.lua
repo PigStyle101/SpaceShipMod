@@ -69,11 +69,27 @@ return function(SpaceShip)
         ship.waiting_for_clear_dock_area = false
     end
 
+    local function clear_missing_docking_port_alert(ship)
+        if not ship then return end
+        if ship.player and ship.player.valid and ship.missing_docking_port_alert_message then
+            pcall(function()
+                ship.player.remove_alert({
+                    icon = WAITING_DOCK_ALERT_ICON,
+                    message = ship.missing_docking_port_alert_message
+                })
+            end)
+        end
+        ship.missing_docking_port_alerted = false
+        ship.missing_docking_port_alert_message = nil
+        ship.missing_docking_port_alert_last_tick = nil
+    end
+
     SpaceShip.clear_waiting_states = function(ship)
         if not ship then return end
         ship.waiting_for_open_dock = false
         clear_waiting_open_dock_alert(ship)
         clear_waiting_blocked_dock_area_alert(ship)
+        clear_missing_docking_port_alert(ship)
     end
 
     SpaceShip.init_docking_ports = function()
@@ -209,10 +225,39 @@ return function(SpaceShip)
             end
 
             if not found_named_port or not target_docking_port_unit_number or not target_docking_port or not target_docking_port.valid then
-                game.print("Error: Could not find docking port named '" ..
-                    selected_port_name .. "' for station " .. schedule.records[schedule.current].station)
+                local message = "Could not find docking port named '" ..
+                    selected_port_name .. "' for station " .. schedule.records[schedule.current].station
+
+                if not ship.missing_docking_port_alerted then
+                    game.print("Error: " .. message)
+                end
+
+                if ship.player and ship.player.valid then
+                    local should_refresh_alert = ship.missing_docking_port_alerted and
+                        ship.missing_docking_port_alert_last_tick and
+                        (game.tick - ship.missing_docking_port_alert_last_tick) >= WAITING_DOCK_ALERT_REFRESH_TICKS
+
+                    if not ship.missing_docking_port_alerted or should_refresh_alert then
+                        local alert_entity = (ship.hub and ship.hub.valid) and ship.hub or nil
+                        if alert_entity then
+                            ship.missing_docking_port_alert_message = message
+                            pcall(function()
+                                ship.player.add_custom_alert(
+                                    alert_entity,
+                                    WAITING_DOCK_ALERT_ICON,
+                                    ship.missing_docking_port_alert_message,
+                                    true)
+                            end)
+                            ship.missing_docking_port_alert_last_tick = game.tick
+                        end
+                    end
+                end
+
+                ship.missing_docking_port_alerted = true
                 return false
             end
+
+            clear_missing_docking_port_alert(ship)
         else
             local target_planet = schedule.records[schedule.current].station
             for unit_number, port_data in pairs(storage.docking_ports) do
