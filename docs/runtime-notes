@@ -1,0 +1,139 @@
+- Rendering highlights are stored as IDs; use rendering.get_object_by_id(...) before destroy/mutate.
+- Dock preview cleanup must tolerate invalid player and nil/empty highlight tables.
+- clone_ship_to_space_platform must not assume force.platforms is non-empty.
+- Cargo drop flow should create pod first, then remove inventory items to avoid item loss on pod creation failure.
+- Robot/platform build events may have no force.players[1]; pass nil player safely to handlers.
+- Schedule condition evaluation uses grouped AND clauses joined by OR; avoid seeding OR accumulator with true.
+- When deleting schedule records, clamp schedule.current to remaining bounds.
+- Cancel-dock must clear storage.highlight_data renders, not only legacy takeoff_highlights.
+- attempt_docking should validate cached docking port records/surfaces and guard empty ship.floor before area bounds math.
+- Deferred clone finalize must dequeue job and clear ship clone flags when hub remap fails, or queue can deadlock.
+- Dropped/invalid queued scans should clear ship.waiting_for_scan to avoid stale waiting state.
+- In automatic behavior, only mutate platform travel state when clone starts (deferred); guard hub validity after clone attempt.
+- Ship GUI event routing depends on element.tags.filter.owner == "ship-gui"; mismatched tag keys (callbacks_filter) silently drop events.
+- GUI callbacks should guard stale ship/event payloads (deleted ship, selected_index==0, missing selected_signal/station).
+- Station selector close button also needs filter tags or its click handler never fires.
+- Rebuild storage.docking_ports on init/config changes by scanning existing spaceship-docking-port entities; otherwise upgraded saves miss docking metadata.
+- Hub resolution fallback should only auto-bind when candidate match is unambiguous (prefer same force, otherwise single same-surface candidate).
+- GUI dock-table builders should check value.surface.valid before accessing platform/space_location.
+- Keep GUI event registration centralized in control.lua; gui_controller.lua should expose handlers only to avoid split ownership drift.
+- Use ipairs for ordered schedule record iteration where indices map to UI widgets/progress; pairs can desync station index mapping.
+- During docking-port registry rebuild, preserve user config (name/ship_limit) but do not blindly restore ship_docked occupancy flags.
+- Guard ship records with value.hub/value.hub.valid checks in GUI close paths to tolerate stale entries.
+- For wait_conditions, prefer ipairs in GUI rendering/progress paths; pairs can reorder sparse arrays and desync condition indices.
+
+- Throttle high-frequency runtime error prints with storage.spaceship_message_cooldowns to avoid log spam during retry loops (docking/scan failures).
+- Include ship id in critical scan/clone failure messages to correlate queue transitions.
+
+- Treat LuaObject validity as mandatory before nested field access (`surface.valid` before `surface.platform`, `entity` before `entity.valid`) to avoid stale-reference runtime crashes.
+
+- In platform event handlers (Stations/control), guard event.platform validity and platform name type before string parsing/state reads.
+
+- Prefer defines.space_platform_state constants over numeric literals (e.g., waiting_at_station) to avoid API/version drift bugs.
+
+
+
+
+
+
+
+
+- control.lua uses `goto continue` (Lua 5.2+ syntax) in places, so `luac5.1`/`lua5.1` cannot parse it (no goto support) — use `luac5.4`/`lua5.4` (or luajit) to validate control.lua and any file that might use goto/labels. `tips-and-tricks-simulations.lua` and other simpler files are fine with luac5.1.
+
+- Lua static checks in this workspace may infer singleton types for defines.direction constants in condition chains; using numeric cardinal values (2/4/6) can avoid false-positive type errors when toggling directions.
+- In Factorio 2.0 prototype schema, DeciderCombinatorPrototype does not expose constant-style circuit wire connection point fields; to use constant wire attachment behavior, base the entity on constant-combinator and then overlay decider visual fields.
+
+
+## Docking Port Prototype Analysis (2.0-compatible)
+- **Current Definition**: [data.lua](data.lua#L29) — deepcopy of `constant-combinator` with name/localised_name/minable overrides only
+- **Item Icon**: Tints constant-combinator icon (gray tint applied)
+- **Base Combinator Properties Inherited**: Sprites (Sprite4Way), collision_box, selection_box, circuit connectors, activity_led_sprites, activity_led_light
+- **Orientation**: Currently inherits constant-combinator's 4-way rotation (north/east/south/west) via `Sprite4Way` definitions
+- **Constraints**: No explicit "not-rotatable" flag; constant-combinator can rotate since v0.13.0
+- **To restrict to 2-way (left/right)**: Combine flags `"not-rotatable"` + runtime placement validation, OR override `Sprite4Way` sprites to use only 2 directions, OR use decider-combinator as base (also has Sprite4Way)
+- **Decider vs Constant for docking**: Both support Sprite4Way; decider has same collision/sprites structure but adds logic symbol sprites; recommend checking feature compatibility before switching
+
+## Docking Port Orientation Enforcement Research (2.0 API)
+### Current Runtime Coverage
+- **on_built_entity**: ✓ Calls `SpaceShip.handle_built_entity()` → `normalize_docking_port_direction()` (real entities + ghosts via `handle_ghost_entity()`)
+- **on_robot_built_entity**: ✓ Calls `handle_built_entity()`
+- **on_space_platform_built_entity**: ✓ Calls `handle_built_entity()`
+- **script_raised_built**: ✓ Calls `handle_built_entity()`
+- **script_raised_revive**: ✓ Calls `handle_built_entity()`
+- **on_player_rotated_entity**: ✓ Calls `normalize_docking_port_direction(entity, event.previous_direction)`
+- **on_entity_cloned**: ✓ Calls `normalize_docking_port_direction()` for cloned ports
+- **on_entity_settings_pasted**: ✗ Copies port config (name/ship_limit) but does NOT normalize direction
+
+### Current Direction Logic
+- East (2) and West (6) are valid; all others (North=0, South=4) are corrected to East or West
+- Ghost direction (`entity-ghost` with `ghost_name == "spaceship-docking-port"`): Always forced to East (2)
+- Regular entity direction: Context-aware fallback (preserves previous_direction intent when available)
+
+### Placement Paths NOT Currently Covered
+1. **on_pre_build event**: Not registered in control.lua; runs before entity creation, allowing prevention/direction override
+2. **Blueprint placement**: Uses on_built_entity but may bypass direction if blueprints store/restore direction field directly
+3. **Copy-paste (settings)**: on_entity_settings_pasted patches config but ignores direction mutation
+4. **Entity deconstruction + reclaim via construction robot**: Uses on_robot_built_entity (covered) but direction may be read from ghost
+5. **Surface.create_entity() scripted spawns**: Covered only if fire on_built_entity; direct create bypasses handlers
+6. **Manual entity.direction mutations via script**: No guard; third-party mods could mutate freely
+7. **Deconstructed blueprint replacement**: If player places blueprint of deconstructed port, direction from blueprint used (not normalized until on_built_entity)
+
+### Factorio 2.0 API Findings
+- **entity.direction**: Integer 0-7 (octal: north=0, northeast=1, east=2, southeast=3, south=4, southwest=5, west=6, northwest=7). Write-mutable at runtime.
+- **entity.orientation**: RealOrientation (0.0-1.0 range); separate from direction; used for smooth rotation (turrets, etc.). Generally not applicable to combinators.
+- **on_pre_build event**: Fires before on_built_entity; provides (player_index, position, item, direction, build_mode, created_by_moving). NO entity reference yet (ghost/entity not created). Cannot modify entity; can only prevent build (via script return value, if available) or log/warn.
+- **entity-ghost**: Supports direction field; ghost direction is preserved independently from underlying entity prototype default.
+- **Sprite4Way**: 4-direction sprite definition; allows arbitrary rotation. No "only 2 directions" constraint at prototype level without prototype-field override or runtime guard.
+- **Returning false from on_pre_build is not standard**: Factorio does not offer a built-in "cancel" return; on_pre_build is informational/read-only for direction at event-time.
+
+### Best Minimal Robust Strategy
+1. **Prototype-level (data.lua)**:
+   - Add `"not-rotatable" = true` to `dockingPortEntity` to disable player R/Z rotation keys (prevents manual rotation but not all placement paths).
+   
+2. **Pre-build validation (new handler)**:
+   - Register `on_pre_build` event; log/warn if `event.entity_name == "spaceship-docking-port"` and direction is north/south (for diagnostics).
+   - Cannot enforce direction here, but allows early detection of problematic placements.
+
+3. **Post-build normalization (existing + enhancements)**:
+   - Existing handlers already cover most paths.
+   - **Add to on_entity_settings_pasted**: After copying config, call `SpaceShip.normalize_docking_port_direction()` on destination if it's a port.
+   - **Periodic enforcement (on_tick)**: Every 60 or 300 ticks, scan all docking ports on all surfaces and call `SpaceShip.enforce_registered_docking_port_directions()` to catch any stray mutations.
+
+4. **Ghost enforcement**:
+   - on_built_entity already handles ghosts; confirm coverage holds during copy-paste (likely does via on_entity_settings_pasted handler addition).
+
+### Implementation Points
+- **control.lua**: 
+  - Add `script.on_event(defines.events.on_pre_build, ...)` to log orientation mismatches (informational only).
+  - Add periodic enforcement call in existing `on_tick` handler alongside other 60-tick automation checks.
+- **spaceship/docking_ports.lua**: 
+  - Add `SpaceShip.enforce_all_docking_port_directions()` to iterate storage.docking_ports and call normalize on each (separate from existing enforce_registered_docking_port_directions which already exists).
+- **spaceship/entity_handlers.lua**:
+  - In `handle_entity_settings_pasted()`, after port config copy, add: `SpaceShip.normalize_docking_port_direction(destination)` if destination is a port.
+
+### Edge Case Resolutions
+- **Robot deconstruction + blueprint rebuild**: on_robot_built_entity fires; normalize covers it.
+- **Undo (Ctrl+Z) on rotated port**: No event fired by undo itself; if players manually rotate, on_player_rotated_entity fires.
+- **Cloned port from external source**: on_entity_cloned fires; already handled.
+- **Load/reload save**: Existing docking ports resume in their current state; periodic enforcement on_tick ensures consistency on resume.
+
+- Docking port orientation is runtime-enforced to east/west only via `SpaceShip.enforce_docking_port_direction` on build/ghost/rotate/clone paths plus 60-tick registry enforcement.
+- New wait condition `time_passed` stores `ticks` in ship schedule and converts to native wait condition `type="time"` via `SpaceShip.to_native_schedule(...)` before assigning platform schedules.
+- Docking ports now follow a clamp-style composite lifecycle: item places `spaceship-docking-port-place`, runtime converts to `spaceship-docking-port`, and hidden internal/external poles are maintained/reconnected via `ensure_docking_port_poles` + `connect_adjacent_ports`.
+- Dynamic hub storage should use `LuaEntity.set_inventory_size_override(defines.inventory.chest, size)` and clamp size to highest occupied slot to avoid deleting items when shrinking capacity.
+
+## Station naming (Stations.lua)
+- Fixed (2026-07-07): `Stations.handle_platform_state_change` used to only rename a new platform on the exact `waiting_for_starter_pack -> starter_pack_requested` transition. If the starter pack is manually pre-loaded into the silo before clicking "build new space platform", Factorio skips straight past `starter_pack_requested` to `starter_pack_on_the_way` (or later), so the equality check never matched and the platform kept its default vanilla name ("Space platform: <default> created in orbit"). Fixed by triggering on any transition *away from* `waiting_for_starter_pack` (that state only ever occurs once, at creation), plus a guard skipping platforms already named `-station`.
+
+## Tips-and-tricks simulations (prototypes/tips-and-tricks-simulations.lua)
+- Tip status (`locked`/`unlocked`/`suggested`/etc.) is recorded per-save the first time the game ever sees a given tips-and-tricks-item name. If a save already loaded a tip before `starting_status = "unlocked"` was added to its prototype, the save keeps the old recorded status (usually `locked`) — the new `starting_status` only applies to saves that have truly never seen that tip name. There is no scripting API to reset tip status from control.lua; `/unlock-tips` (console command) is the only way to force-refresh it in an existing save during testing.
+- Follow vanilla base-game style for `create_entities_from_blueprint_string`: call it as `surface.create_entities_from_blueprint_string` with the `{ string = ..., position = ... }` table starting on its own line (not inlined after the function name), matching `data/base/prototypes/tips-and-tricks-simulations.lua` (e.g. `simulations.limit_chest`).
+- `checkboard = false` (top-level simulation field) disables the fallback checkerboard rendering and is only safe to use when the simulation also has a `save = "...zip"` field with real pre-generated map tiles (e.g. `entering_spaceship_cockpit`). A from-scratch simulation (no `save`, just `game.surfaces[1]`) has no generated tiles at all; setting `checkboard = false` there renders a black void with just the player visible. From-scratch sims should either omit `checkboard` (defaults true) or call `surface.build_checkerboard{...}` explicitly, matching `simulations.spaceship_actions`.
+- Rocket silo GUI "Build new space platform" button caption/locale key is `gui-rocket-silo.space-platform-button` (in Factorio's core.cfg). It is NOT gated by any technology — the "space-platform" tech only unlocks recipes (asteroid-collector, crusher, cargo-bay, etc.) *after* the first platform is created via a `research_trigger = {type = "create-space-platform"}`, and its only prerequisite is `rocket-silo` tech.
+  - `LuaEntity.use_transitional_requests` maps to the "Automatic requests from space platforms" checkbox, confirmed settable via script (checkbox shows checked after `silo.use_transitional_requests = true`) — BUT per its own docs it's for requesting items "for space platforms in orbit", i.e. resupplying an *existing* platform. It does NOT help create the very first platform (nothing exists yet to request for), so the button stays disabled even with it enabled and empty rocket inventory.
+  - Confirmed via in-game `rendering.draw_text` debug label that `surface.planet` CAN be made valid in a simulation via `LuaPlanet.associate_surface(surface)` — but this did NOT fix the greyed-out button either.
+  - `LuaForce.is_space_platforms_unlocked()` / `unlock_space_platforms()` / `lock_space_platforms()` also did not fix it.
+  - **CRITICAL, CONFIRMED BY ENGINE CRASH LOG**: Actually clicking "Build new space platform" inside a `game.simulation` (tips-and-tricks preview) causes a genuine native SIGSEGV crash in the Factorio engine itself (stack trace: `GameView.cpp: activateNewSpacePlatformGUI` <- `openNewPlatformButtonFromRocketSilo` <- `RocketSiloGui.cpp: newSpacePlatformButtonClicked` <- `LuaSimulation.cpp: luaMouseClick`). This is an engine limitation/bug, NOT a scripting problem — no amount of setup (starter pack, planet association, unlock flags) fixes it, because the actual native GUI flow for creating a platform isn't supported inside the simulation sandbox at all. **Do not ever call `game.simulation.mouse_click()` (or otherwise trigger a click) on the rocket silo's "Build new space platform" button from within a tips-and-tricks simulation** — it will crash the whole Factorio client. If a tip needs to demonstrate this, stop at hovering the button (move_cursor to its widget position) and do not click it.
+- `LuaSimulation.control_up{...}` only accepts a `control` key (no `notify`), unlike `control_down`/`control_press` which accept both; passing `notify` to `control_up` errors at runtime.
+- `LuaSimulation.move_cursor{position=..., speed=...}` moves the cursor only partway per call and returns whether it will reach the target on this call. For a smooth "slide" it must be invoked from inside a story `condition` function (evaluated every tick) so it's called repeatedly, e.g. `condition = function() return game.simulation.move_cursor{...} end`. Calling it once from a one-shot `action` (tied to a timed `condition`) makes the cursor snap/jump once instead of sliding.
+- Always guard entity fields (`entity and entity.valid and entity.position`) before dereferencing, matching the fallback pattern used throughout this file.
