@@ -12,6 +12,7 @@ local ship_captions = {
     time_passed_condition = "Time passed",
     passenger_present_condition = "Passenger present",
     passenger_not_present_condition = "Passenger not present",
+    item_count_condition = "Item count",
     unload = "Unload",
     no_dock = ": (Station has no dock)"
 }
@@ -426,10 +427,11 @@ function schedule_gui.on_add_condition(event)
         ship_captions.circuit_condition,
         ship_captions.time_passed_condition,
         ship_captions.passenger_present_condition,
-        ship_captions.passenger_not_present_condition
+        ship_captions.passenger_not_present_condition,
+        ship_captions.item_count_condition
     }
 
-    local conditions_map = { "circuit", "time_passed", "passenger_present", "passenger_not_present" }
+    local conditions_map = { "circuit", "time_passed", "passenger_present", "passenger_not_present", "item_count" }
 
     local element = event.element
 
@@ -845,7 +847,156 @@ local function create_time_condition(condition, condition_index, frame, override
     }
 end
 
+local function create_item_condition(condition, condition_index, frame, override_right, ship_id, callbacks_filter)
+    if not frame then return end
 
+    local station_index = frame.tags.station_index
+    local main_container = frame
+    local compare_type = condition.compare_type
+
+    local bool_container = main_container["bool-column"] or
+    main_container.add { type = "flow", direction = "vertical", name = "bool-column" }
+
+    if #bool_container.children == 0 then
+        local spacer = bool_container.add { type = "empty-widget" }
+        spacer.style.minimal_height = 18
+        spacer.style.natural_height = 18
+    end
+
+    if main_container["conditions-column"] then
+        local bool_flow = bool_container.add { type = "flow", direction = "horizontal" }
+        bool_flow.style.minimal_width = 100
+
+        local bool_frame = bool_flow.add { type = "frame" }
+        bool_frame.style.maximal_height = 40
+        bool_frame.style.vertical_align = "center"
+        bool_frame.style.top_padding = 2
+        bool_frame.style.bottom_padding = 2
+        bool_frame.style.left_padding = 2
+        bool_frame.style.right_padding = 2
+
+        local bool_button = bool_frame.add {
+            type = "button",
+            name = "bool-switch",
+            caption = condition.compare_type == "and" and "AND" or condition.compare_type == "or" and "OR" or "AND",
+            tags = {
+                station_index = station_index,
+                condition_index = condition_index,
+                ship_id = ship_id,
+                callbacks_filter = callbacks_filter
+            }
+        }
+        bool_button.style.maximal_width = 56
+
+        bool_flow.style.minimal_height = 40
+        bool_flow.style.natural_height = 40
+        bool_flow.style.maximal_height = 40
+        bool_flow.style.vertical_align = "center"
+
+        if override_right then bool_flow.style.horizontal_align = "right" elseif compare_type == "or" then bool_flow.style.horizontal_align =
+            "left" else bool_flow.style.horizontal_align = "right" end
+    end
+
+    local condition_flow = main_container["conditions-column"] or
+    main_container.add { type = "flow", direction = "vertical", name = "conditions-column" }
+
+    local condition_frame = condition_flow.add {
+        type = "frame",
+        style = "train_schedule_station_frame",
+        tags = {
+            type = "condition", condition_index = condition_index, station_index = station_index, ship_id = ship_id, callbacks_filter = callbacks_filter
+        }
+    }
+    condition_frame.style.horizontally_stretchable = true
+
+    local progress = condition_frame.add {
+        type = "progressbar",
+        name = "condition-progress",
+        value = 0,
+        embed_text_in_bar = true,
+        tags = {
+            condition_index = condition_index, station_index = station_index, ship_id = ship_id, callbacks_filter = callbacks_filter
+        },
+    }
+    progress.style.horizontally_stretchable = true
+    progress.style.bar_width = 32
+    progress.style.height = 32
+    progress.style.color = { r = 0, g = 1, b = 0, a = 0.4 }
+    progress.style.font_color = { r = 0, g = 0, b = 0 }
+    progress.style.font = "default-bold"
+    progress.style.horizontal_align = "center"
+    progress.style.vertical_align = "center"
+
+    local row = condition_frame.add {
+        type = "flow",
+        direction = "horizontal",
+        name = "input-flow"
+    }
+    row.style.horizontal_align = "center"
+    row.style.vertical_align = "center"
+
+    -- Item signal chooser (only allows item-type signals since we're reading inventory)
+    local selected_elem_name = condition.condition and condition.condition.first_signal and
+    condition.condition.first_signal.name or nil
+
+    local chose_elem = row.add {
+        type = "choose-elem-button",
+        name = "select-first-signal",
+        elem_type = "signal",
+        style = "train_schedule_item_select_button",
+        tags = { condition_index = condition_index, station_index = station_index, ship_id = ship_id, filter = callbacks_filter }
+    }
+    if selected_elem_name then
+        chose_elem.elem_value = { type = condition.condition.first_signal.type, name = selected_elem_name }
+    end
+
+    local operators_array = { "<", "<=", "=", ">=", ">" }
+    local operator_index = (function(comparator)
+        for index, value in ipairs(operators_array) do
+            if value == comparator then
+                return index
+            end
+        end
+        return nil
+    end)(condition.condition and condition.condition.comparator)
+
+    row.add {
+        type = "drop-down",
+        name = "comparison-dropdown",
+        items = operators_array,
+        selected_index = operator_index or 1,
+        style = "train_schedule_circuit_condition_comparator_dropdown",
+        tags = {
+            condition_index = condition_index, station_index = station_index, ship_id = ship_id, filter = callbacks_filter
+        }
+    }
+
+    local value_field = row.add {
+        type = "textfield",
+        name = "item-count-amount",
+        text = condition.condition and condition.condition.constant or "0",
+        numeric = true,
+        allow_decimal = false,
+        allow_negative = false,
+        style = "console_input_textfield",
+        tags = {
+            condition_index = condition_index, station_index = station_index, ship_id = ship_id, filter = callbacks_filter
+        }
+    }
+    value_field.style.horizontal_align = "left"
+    value_field.style.minimal_width = 50
+    value_field.style.maximal_width = 100
+
+    add_move_up_down_buttons(row, station_index, "condition", condition_index, ship_id, callbacks_filter)
+
+    row.add {
+        type = "sprite-button",
+        name = "remove-condition",
+        sprite = "virtual-signal/signal-X",
+        style = "train_schedule_delete_button",
+        tags = { station_index = station_index, condition_index = condition_index, ship_id = ship_id, filter = callbacks_filter }
+    }
+end
 
 local function add_conditions(args)
     local wait_conditions, container, ship_id, callbacks_filter = args.wait_conditions, args.container, args.ship_id,
@@ -886,6 +1037,15 @@ local function add_conditions(args)
                 ship_id,
                 callbacks_filter
             )
+        elseif condition_type == "item_count" or condition_type == "item" then
+            create_item_condition(
+                condition,
+                i,
+                container,
+                override_right,
+                ship_id,
+                callbacks_filter
+            )
         else
             create_constant_condition(
                 condition,
@@ -899,11 +1059,6 @@ local function add_conditions(args)
     end
 end
 
-
-
-local function create_item_condition()
-    assert(false, "ERROR: NOT IMPLEMENTED")
-end
 
 
 function schedule_gui.close_station_selector(event)

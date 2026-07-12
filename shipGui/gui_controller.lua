@@ -315,6 +315,20 @@ callbacks.on_gui_text_changed["time-passed-seconds"] = function(event)
     })
 end
 
+callbacks.on_gui_text_changed["item-count-amount"] = function(event)
+    local element = event.element
+    local amount = element.text
+    local tags = element.tags
+
+    emit("on_condition_constant_confirmed", {
+        condition_index = tags.condition_index,
+        station_index = tags.station_index,
+        ship_id = tags.ship_id,
+        amount = amount,
+        player_index = event.player_index
+    })
+end
+
 callbacks.on_click["edit-name"] = function(event)
     local flow = event.element.parent
     local label = flow["label"]

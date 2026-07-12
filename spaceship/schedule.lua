@@ -19,6 +19,9 @@ return function(SpaceShip)
         if normalized == "time" then
             return "time_passed"
         end
+        if normalized == "item" or normalized == "item_count" then
+            return "item_count"
+        end
         return normalized
     end
 
@@ -182,56 +185,29 @@ return function(SpaceShip)
         return false
     end
 
-    local function is_player_on_ship(ship)
-        if not ship or not ship.surface or not ship.surface.valid then return false end
-
-        if is_player_in_ship_cockpit(ship) then
-            return true
+    local function read_hub_inventory_count(ship, item_name)
+        if not (ship and ship.hub and ship.hub.valid) then return 0 end
+        local inventory = ship.hub.get_inventory(defines.inventory.chest)
+        if not inventory then return 0 end
+        local ok, result = pcall(function()
+            return inventory.get_item_count(item_name)
+        end)
+        if ok then
+            return result
         end
-
-        if not ship.floor or table_size(ship.floor) == 0 then
-            return false
-        end
-
-        local min_x, max_x = math.huge, -math.huge
-        local min_y, max_y = math.huge, -math.huge
-        for _, tile in pairs(ship.floor) do
-            min_x = math.min(min_x, tile.position.x)
-            max_x = math.max(max_x, tile.position.x)
-            min_y = math.min(min_y, tile.position.y)
-            max_y = math.max(max_y, tile.position.y)
-        end
-
-        local characters = ship.surface.find_entities_filtered {
-            type = "character",
-            area = {
-                { x = min_x - 0.5, y = min_y - 0.5 },
-                { x = max_x + 0.5, y = max_y + 0.5 }
-            }
-        }
-
-        for _, character in pairs(characters) do
-            if character and character.valid and character.player and character.player.valid then
-                local tile = ship.surface.get_tile(character.position)
-                if tile and tile.valid and tile.name == "spaceship-flooring" then
-                    return true
-                end
-            end
-        end
-
-        return false
+        return 0
     end
 
     local function evaluate_wait_condition(ship, condition, signals, passenger_on_ship)
         local condition_type = normalize_condition_type(condition and condition.type)
         if condition_type == "passenger_not_present" then
             if passenger_on_ship == nil then
-                passenger_on_ship = is_player_on_ship(ship)
+                passenger_on_ship = is_player_in_ship_cockpit(ship)
             end
             return not passenger_on_ship
         elseif condition_type == "passenger_present" then
             if passenger_on_ship == nil then
-                passenger_on_ship = is_player_on_ship(ship)
+                passenger_on_ship = is_player_in_ship_cockpit(ship)
             end
             return passenger_on_ship
         elseif condition_type == "time_passed" then
@@ -240,6 +216,28 @@ return function(SpaceShip)
                 condition.started_tick = game.tick
             end
             return (game.tick - condition.started_tick) >= ticks_required
+        elseif condition_type == "item_count" then
+            if condition and condition.condition and condition.condition.first_signal then
+                local item_name = condition.condition.first_signal.name
+                local comparison = condition.condition.comparator
+                local target = tonumber(condition.condition.constant) or 0
+                local count = read_hub_inventory_count(ship, item_name)
+
+                if comparison == "<" then
+                    return count < target
+                elseif comparison == "<=" then
+                    return count <= target
+                elseif comparison == "=" then
+                    return count == target
+                elseif comparison == ">=" then
+                    return count >= target
+                elseif comparison == ">" then
+                    return count > target
+                end
+                return false
+            end
+            -- No valid item signal configured — condition is not met
+            return false
         end
 
         if condition and condition.condition and condition.condition.first_signal then
@@ -454,7 +452,7 @@ return function(SpaceShip)
                     local condition_type = normalize_condition_type(condition and condition.type)
                     if condition_type == "passenger_not_present" or condition_type == "passenger_present" then
                         if passenger_on_ship == nil then
-                            passenger_on_ship = is_player_on_ship(ship)
+                            passenger_on_ship = is_player_in_ship_cockpit(ship)
                         end
                         if condition_type == "passenger_not_present" then
                             progress_value = (not passenger_on_ship) and 1 or 0
@@ -471,6 +469,33 @@ return function(SpaceShip)
                         else
                             condition.started_tick = nil
                             progress_value = 0
+                        end
+                    elseif condition_type == "item_count" then
+                        if condition and condition.condition and condition.condition.first_signal then
+                            local item_name = condition.condition.first_signal.name
+                            local target_value = tonumber(condition.condition.constant) or 0
+                            local current_count = read_hub_inventory_count(ship, item_name)
+                            local comparator = condition.condition.comparator
+
+                            if comparator == ">" or comparator == ">=" then
+                                if target_value <= 0 then
+                                    progress_value = 1
+                                else
+                                    progress_value = current_count / target_value
+                                end
+                            elseif comparator == "<" or comparator == "<=" then
+                                if current_count <= 0 then
+                                    progress_value = target_value <= 0 and 1 or 0
+                                else
+                                    progress_value = target_value / current_count
+                                end
+                            elseif comparator == "=" then
+                                if target_value == 0 then
+                                    progress_value = current_count == 0 and 1 or 0
+                                else
+                                    progress_value = 1 - (math.abs(current_count - target_value) / target_value)
+                                end
+                            end
                         end
                     elseif condition and condition.condition and condition.condition.first_signal then
                         local signal_value = tonumber(signals[condition.condition.first_signal.name]) or 0
@@ -568,7 +593,7 @@ return function(SpaceShip)
                 local condition_type = normalize_condition_type(condition.type)
                 if condition_type == "passenger_not_present" or condition_type == "passenger_present" then
                     if passenger_on_ship == nil then
-                        passenger_on_ship = is_player_on_ship(ship)
+                        passenger_on_ship = is_player_in_ship_cockpit(ship)
                     end
                 elseif not signals and ship.hub and ship.hub.valid then
                     signals = SpaceShip.read_circuit_signals(ship.hub)

@@ -1,11 +1,5 @@
 # Copilot instructions for SpaceShipMod (Factorio 2.0 + Space Age)
 
-## Strict Rules for Code Editing
-- **Never truncate, summarize, or omit existing code** when adding comments or refactoring.
-- **Always preserve the exact logic** of the functions you are editing.
-- If you are adding comments, output the full, functional code including the new comments. Do not use "..." placeholders or skip sections of the file.
-- If a file is too large to edit in one pass, refuse the edit and ask for a smaller scope, rather than outputting incomplete code.
-
 ## Big picture architecture
 - This is a Factorio mod with two execution phases:
   - **Data stage**: `data.lua` defines prototypes/recipes/tech; `data-final-fixes.lua` rewrites recipes/tech unlocks across mods.

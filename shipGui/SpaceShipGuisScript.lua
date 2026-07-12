@@ -30,6 +30,25 @@ local function get_ship_gui_anchor(player, fallback_position)
     }
 end
 
+--- Checks whether a planet already has a station platform for the given force.
+--- @param force LuaForce The force to check platforms for.
+--- @param planet_name string The planet name to check.
+--- @return boolean has_station True if a station platform exists orbiting the planet.
+local function planet_has_station(force, planet_name)
+    if not (force and force.valid and planet_name) then
+        return false
+    end
+    for _, platform in pairs(force.platforms) do
+        if platform and platform.valid
+            and platform.space_location
+            and platform.space_location.name == planet_name
+            and string.find(platform.name, "-station") then
+            return true
+        end
+    end
+    return false
+end
+
 -- Define event handlers
 function SpaceShipGuis.on_station_selected(event)
     local ship = storage.spaceships[event.ship_id]
@@ -338,6 +357,12 @@ function SpaceShipGuis.create_spaceship_gui(player, ship)
         custom_gui.add { type = "button", name = "drop-player-to-planet", caption = "Drop player to Planet", tags = { ship = ship_tag_number } }
 
         custom_gui.add { type = "button", name = "drop-items-to-planet", caption = "Drop items to Planet", tags = { ship = ship_tag_number } }
+
+        --- "Make Station" button: only shown when orbiting a planet that has no station yet.
+        if ship.planet_orbiting and ship.planet_orbiting ~= "none"
+            and not planet_has_station(ship.hub.force, ship.planet_orbiting) then
+            custom_gui.add { type = "button", name = "make-station", caption = "Make Station", tags = { ship = ship_tag_number } }
+        end
     end
 end
 
@@ -370,6 +395,89 @@ function SpaceShipGuis.close_spaceship_gui(event)
     end
 end
 
+--- Converts a ship into a station: renames the platform, replaces the hub,
+--- removes all thruster entities, swaps spaceship-flooring tiles to
+--- space-platform-foundation, closes GUIs, and removes the ship from storage.
+--- @param ship table The ship to convert.
+--- @param player LuaPlayer The player who triggered the conversion (may be nil).
+function SpaceShipGuis.make_station_confirm(ship, player)
+    if not (ship and ship.hub and ship.hub.valid and ship.planet_orbiting and ship.planet_orbiting ~= "none"
+        and ship.surface and ship.surface.valid and ship.hub.force and ship.hub.force.valid) then
+        game.print("[color=red]Error: Cannot convert ship to station — ship state is invalid.[/color]")
+        return
+    end
+
+    local force = ship.hub.force
+    local planet_name = ship.planet_orbiting
+    local hub_position = ship.hub.position
+    local ship_surface = ship.surface
+
+    -- Find and rename the ship's platform to {planet}-station
+    local platform = nil
+    for _, plat in pairs(force.platforms) do
+        if plat and plat.valid and plat.surface == ship_surface then
+            platform = plat
+            break
+        end
+    end
+
+    if not platform then
+        game.print("[color=red]Error: Could not find the ship's platform to convert.[/color]")
+        return
+    end
+
+    platform.name = planet_name .. "-station"
+
+    -- Replace the spaceship-control-hub with a vanilla space-platform-hub
+    ship_surface.create_entity({
+        name = "space-platform-hub",
+        position = hub_position,
+        force = force
+    })
+
+    if ship.hub and ship.hub.valid then
+        ship.hub.destroy()
+    end
+
+    -- Remove all thruster entities from the ship's surface
+    local thrusters = ship_surface.find_entities_filtered({ type = "thruster" })
+    for _, thruster in pairs(thrusters) do
+        if thruster and thruster.valid then
+            thruster.destroy()
+        end
+    end
+
+    -- Swap all spaceship-flooring tiles to space-platform-foundation
+    if ship.floor_positions and #ship.floor_positions > 0 then
+        local tile_batch = {}
+        for _, tile_data in pairs(ship.floor_positions) do
+            if tile_data and tile_data.position then
+                table.insert(tile_batch, {
+                    name = "space-platform-foundation",
+                    position = tile_data.position
+                })
+            end
+        end
+        if #tile_batch > 0 then
+            ship_surface.set_tiles(tile_batch, true)
+        end
+    end
+
+    -- Close the player's GUIs for this ship
+    if player and player.valid then
+        local extended_gui = player.gui.relative["spaceship-controller-extended-gui-" .. ship.name]
+        if extended_gui and extended_gui.valid then extended_gui.destroy() end
+        local schedule_gui = player.gui.relative["spaceship-controller-schedule-gui-" .. ship.name] or
+            player.gui.relative["spaceship-controller-schedual-gui-" .. ship.name]
+        if schedule_gui and schedule_gui.valid then schedule_gui.destroy() end
+    end
+
+    -- Remove the ship from storage
+    storage.spaceships[ship.id] = nil
+
+    game.print("[color=yellow]Station conversion confirmed, modifications queued, please hold.[/color]")
+end
+
 -- Function to handle button clicks
 function SpaceShipGuis.handle_button_click(event)
     local button_name = event.element.name
@@ -394,6 +502,17 @@ function SpaceShipGuis.handle_button_click(event)
     elseif button_name == "drop-items-to-planet" then
         local ship = storage.spaceships[event.element.tags.ship]
         SpaceShip.drop_items_to_planet(ship)
+    elseif button_name == "make-station" then
+        --- First click: show confirmation warning and change button to confirm.
+        local button = event.element
+        if button and button.valid then
+            button.name = "make-station-confirm"
+            button.caption = "Confirm: Make Station?"
+        end
+        game.print("[color=yellow]Warning: This will convert your ship into a station. Engines will be removed and all Spaceship Flooring will be converted to Space Platform Foundation. Click again to confirm.[/color]")
+    elseif button_name == "make-station-confirm" then
+        local ship = storage.spaceships[event.element.tags.ship]
+        SpaceShipGuis.make_station_confirm(ship, player)
     elseif button_name == "close-dock-gui" then
         SpaceShipGuis.close_docking_port_gui(player)
     end

@@ -367,10 +367,18 @@ return function(SpaceShip)
         end
 
         if not area_has_blockers then
+            -- ship.floor tile positions are tile-grid corners; each tile spans
+            -- [position, position + 1) on both axes, so the true footprint runs
+            -- from min_x/min_y to max_x + 1/max_y + 1. The previous +/-0.49
+            -- margin shifted this box half a tile toward the origin, which
+            -- clipped the far edge of the footprint and bled 0.49 tiles into
+            -- the neighboring column/row outside the ship, causing false
+            -- "blocked" detections for entities (e.g. belts) placed just
+            -- outside the actual footprint.
             local blockers = target_docking_port.surface.find_entities_filtered({
                 area = {
-                    { x = min_x - 0.49, y = min_y - 0.49 },
-                    { x = max_x + 0.49, y = max_y + 0.49 }
+                    { x = min_x, y = min_y },
+                    { x = max_x + 1, y = max_y + 1 }
                 }
             })
 

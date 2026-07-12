@@ -4,7 +4,6 @@ local SpaceShipFunctions        = require("SpaceShipFunctionsScript")
 
 SpaceShip.hub                   = nil
 SpaceShip.floor                 = {}                         -- Table to store floor tiles
-SpaceShip.walls                 = {}                         -- Table to store wall tiles
 SpaceShip.entities              = {}                         -- Table to store entities
 SpaceShip.name                  = nil or "Unnamed SpaceShip" -- Name of the spaceship
 SpaceShip.id                    = nil or 0                   -- Unique ID for the spaceship
@@ -42,9 +41,8 @@ function SpaceShip.new(name, id, player)
     local self                 = setmetatable({}, SpaceShip)
 
     -- Initialize spaceship parameters
-    self.floor                 = {}                      -- Table to store floor tiles
-    self.walls                 = {}                      -- Table to store wall tiles
-    self.entities              = {}                      -- Table to store entities
+        self.floor                 = {}                      -- Table to store floor tiles
+        self.entities              = {}                      -- Table to store entities
     self.name                  = name or "Unnamed SpaceShip" -- Name of the spaceship
     self.id                    = id or 0                 -- Unique ID for the spaceship
     self.player                = player                  -- Reference to the player prototype

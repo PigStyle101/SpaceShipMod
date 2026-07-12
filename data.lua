@@ -34,11 +34,6 @@ local dockingPortItem = table.deepcopy(data.raw["item"]["cargo-bay"])
 local floorItem = table.deepcopy(data.raw["item"]["space-platform-foundation"])
 local floorRecipe = table.deepcopy(data.raw["recipe"]["space-platform-foundation"])
 
--- Wall prototypes (based on stone-wall)
-local wallEntity = table.deepcopy(data.raw["wall"]["stone-wall"])
-local wallItem = table.deepcopy(data.raw["item"]["stone-wall"])
-local wallRecipe = table.deepcopy(data.raw["recipe"]["stone-wall"])
-
 -- Control Hub prototypes (based on various prototypes)
 local controlHubItem = table.deepcopy(data.raw["item"]["cargo-bay"])
 local controlHubRecipe = table.deepcopy(data.raw["recipe"]["cargo-bay"])
@@ -70,7 +65,7 @@ local storageLinkRecipe = {
     localised_name = "Spaceship Storage Link",
     enabled = false,
     ingredients = {
-        { type = "item", name = "steel-chest", amount = 2 },
+        { type = "item", name = "steel-chest",        amount = 2 },
         { type = "item", name = "electronic-circuit", amount = 4 }
     },
     results = {
@@ -117,6 +112,36 @@ storageLinkEntity.sprites = {
         scale = 2
     }
 }
+
+-- =============================================================================
+-- LOGISTIC NODE PROTOTYPES
+-- =============================================================================
+
+local logisticNodeItem = table.deepcopy(data.raw["item"]["accumulator"])
+local logisticNodeRecipe = table.deepcopy(data.raw["recipe"]["accumulator"])
+
+logisticNodeItem.name = "spaceship-logistic-node"
+logisticNodeItem.localised_name = "Spaceship Logistic Node"
+logisticNodeItem.place_result = "spaceship-logistic-node"
+logisticNodeItem.icon = nil
+logisticNodeItem.icon_size = nil
+logisticNodeItem.icons = {
+    {
+        icon = data.raw["item"]["accumulator"].icon,
+        icon_size = data.raw["item"]["accumulator"].icon_size,
+        tint = { r = 0.6, g = 0.6, b = 0.8, a = 1.0 }
+    }
+}
+
+logisticNodeRecipe.name = "spaceship-logistic-node"
+logisticNodeRecipe.localised_name = "Spaceship Logistic Node"
+logisticNodeRecipe.ingredients = {
+    { type = "item", name = "accumulator",        amount = 4 },
+    { type = "item", name = "electronic-circuit", amount = 8 }
+}
+logisticNodeRecipe.results = { { type = "item", name = "spaceship-logistic-node", amount = 1 } }
+logisticNodeRecipe.main_product = "spaceship-logistic-node"
+logisticNodeRecipe.enabled = false
 
 -- =============================================================================
 -- DOCKING PORT MODIFICATIONS
@@ -176,26 +201,6 @@ controlHubRecipe.enabled = false
 controlHubItemCar.name = "spaceship-control-hub-car"
 
 -- =============================================================================
--- WALL MODIFICATIONS
--- =============================================================================
-
-wallEntity.name = "spaceship-wall"
-wallEntity.localised_name = "Spaceship Wall"
-wallEntity.minable = { mining_time = 0.2, result = "spaceship-wall" }
-wallEntity.create_ghost_on_death = true
-wallEntity.surface_conditions = nil
-
-wallItem.name = "spaceship-wall"
-wallItem.localised_name = "Spaceship Wall"
-wallItem.place_result = "spaceship-wall"
-
-wallRecipe.name = "spaceship-wall"
-wallRecipe.localised_name = "Spaceship Wall"
-wallRecipe.ingredients = { { type = "item", name = "iron-plate", amount = 1 } }
-wallRecipe.results = { { type = "item", name = "spaceship-wall", amount = 1 } }
-wallRecipe.enabled = false
-
--- =============================================================================
 -- FLOOR MODIFICATIONS
 -- =============================================================================
 
@@ -252,7 +257,7 @@ end
 data:extend({
     -- Custom Control Hub Container Entity
     {
-        type = "container",
+        type = "logistic-container",
         name = "spaceship-control-hub",
         localised_name = "Spaceship Control Hub",
         localised_description = "Main control hub for the spaceship.",
@@ -260,6 +265,8 @@ data:extend({
         flags = { "placeable-neutral", "player-creation", "not-rotatable" },
         icon = "__SpaceShipMod__/control-hub.png",
         icon_size = 500,
+        logistic_mode = "buffer",
+        max_logistic_slots = 10,
         circuit_connector = data.raw["container"]["iron-chest"].circuit_connector,
         circuit_wire_max_distance = data.raw["container"]["iron-chest"].circuit_wire_max_distance,
         draw_circuit_wires = true,
@@ -280,6 +287,95 @@ data:extend({
                     scale = .65
                 },
             }
+        },
+    },
+
+    -- Spaceship Logistic Node Entity (roboport-based logistics participant)
+    {
+        type = "roboport",
+        name = "spaceship-logistic-node",
+        localised_name = "Spaceship Logistic Node",
+        localised_description = "Bridges spaceship storage to the logistics network.",
+        placeable_by = { item = "spaceship-logistic-node", count = 1 },
+        flags = { "placeable-neutral", "player-creation", "not-rotatable" },
+        icon = data.raw["item"]["accumulator"].icon,
+        icon_size = data.raw["item"]["accumulator"].icon_size,
+        minable = { mining_time = 0.2, result = "spaceship-logistic-node" },
+        max_health = 150,
+        collision_box = { { -1, -1 }, { 1, 1 } },
+        selection_box = { { -1, -1 }, { 1, 1 } },
+        energy_source = { type = "void" },
+        energy_usage = "0W",
+        recharge_minimum = "0J",
+        logistics_radius = 20,
+        construction_radius = 0,
+        robot_slots_count = 0,
+        material_slots_count = 0,
+        request_to_open_door_timeout = 0,
+        spawn_and_station_height = 0,
+        charge_approach_distance = 0,
+        charging_energy = "0J",
+        -- Use accumulator body sprite as the base visual
+        base = {
+            layers = {
+                {
+                    filename = "__base__/graphics/entity/accumulator/accumulator.png",
+                    priority = "high",
+                    width = 124,
+                    height = 103,
+                    shift = { 0.7, -0.2 },
+                    scale = 0.5,
+                },
+            }
+        },
+        -- Central hatch sprite for door animation
+        door_animation_up =
+        {
+            filename = "__base__/graphics/entity/roboport/roboport-door-up.png",
+            priority = "medium",
+            width = 97,
+            height = 38,
+            frame_count = 16,
+            shift = util.by_pixel(-0.25, -39.5),
+            scale = 0.5
+        },
+        door_animation_down =
+        {
+            filename = "__base__/graphics/entity/roboport/roboport-door-down.png",
+            priority = "medium",
+            width = 97,
+            height = 41,
+            frame_count = 16,
+            shift = util.by_pixel(-0.25, -19.75),
+            scale = 0.5
+        },
+        -- Antenna glow sprite for recharging animation
+        recharging_animation =
+        {
+            filename = "__base__/graphics/entity/roboport/roboport-recharging.png",
+            draw_as_glow = true,
+            priority = "high",
+            width = 37,
+            height = 35,
+            frame_count = 16,
+            scale = 1.5,
+            animation_speed = 0.5,
+        },
+        -- Antenna charging offsets
+        charging_offsets = {
+            { -0.5, -0.5 },
+            { 0.5,  -0.5 },
+            { -0.5, 0.5 },
+            { 0.5,  0.5 },
+        },
+        base_animation = {
+            filename = "__base__/graphics/entity/accumulator/accumulator.png",
+            priority = "high",
+            width = 124,
+            height = 103,
+            shift = { 0.7, -0.2 },
+            scale = 0.5,
+            frame_count = 1,
         },
     },
 
@@ -370,6 +466,10 @@ data:extend({
             {
                 type = "unlock-recipe",
                 recipe = "spaceship-storage-link"
+            },
+            {
+                type = "unlock-recipe",
+                recipe = "spaceship-logistic-node"
             }
         },
         prerequisites = { "space-science-pack", "spaceship-armor-tech" },
@@ -399,11 +499,10 @@ data:extend({
     storageLinkItem,
     storageLinkRecipe,
     storageLinkEntity,
-    wallEntity,
-    wallItem,
-    wallRecipe,
     controlHubEntityHub,
     controlHubItemCar,
+    logisticNodeItem,
+    logisticNodeRecipe,
 })
 
 -- Add the custom spaceship flooring tile if it was created successfully
@@ -516,10 +615,10 @@ spaceshipArmor.icons = {
     {
         icon = data.raw["armor"]["mech-armor"].icon,
         icon_size = data.raw["armor"]["mech-armor"].icon_size or 64,
-        tint = {r = 0.4, g = 0.4, b = 0.4, a = 1.0}  -- Darker grey to match character
+        tint = { r = 0.4, g = 0.4, b = 0.4, a = 1.0 } -- Darker grey to match character
     }
 }
-spaceshipArmor.icon = nil  -- Remove single icon since we're using icons array
+spaceshipArmor.icon = nil -- Remove single icon since we're using icons array
 -- Position the Space Suit right after power-armor-mk2 ("e[power-armor-mk2]") and
 -- before mech-armor ("f[mech-armor]") in crafting/inventory listings.
 spaceshipArmor.order = "e[spaceship-armor]"
@@ -544,7 +643,8 @@ if spaceshipArmor.resistances and powerArmorMk2 and powerArmorMk2.resistances th
     end
 end
 if powerArmorMk2 then
-    spaceshipArmor.inventory_size_bonus = ((spaceshipArmor.inventory_size_bonus or 0) + (powerArmorMk2.inventory_size_bonus or 0)) / 2
+    spaceshipArmor.inventory_size_bonus = ((spaceshipArmor.inventory_size_bonus or 0) + (powerArmorMk2.inventory_size_bonus or 0)) /
+        2
 end
 
 local mechArmorGrid = data.raw["equipment-grid"][spaceshipArmor.equipment_grid]
@@ -555,7 +655,7 @@ if mechArmorGrid and mk2ArmorGrid then
     midGrid.width = math.max(1, math.floor((mechArmorGrid.width + mk2ArmorGrid.width) / 2))
     midGrid.height = math.max(1, math.floor((mechArmorGrid.height + mk2ArmorGrid.height) / 2))
     spaceshipArmor.equipment_grid = midGrid.name
-    data:extend({midGrid})
+    data:extend({ midGrid })
 end
 
 -- Now I understand how armor visuals work in Factorio 2.0!
@@ -565,23 +665,23 @@ end
 -- Find the character prototype and add spaceship-armor to the mech-armor animation set
 if data.raw["character"] and data.raw["character"]["character"] then
     local character = data.raw["character"]["character"]
-    
+
     if character.animations then
         -- Look for the animation set that includes mech-armor
         for i, animation_set in ipairs(character.animations) do
             if animation_set.armors then
                 for j, armor_name in ipairs(animation_set.armors) do
                     if armor_name == "mech-armor" then
-                        -- Found the mech-armor animation set! 
+                        -- Found the mech-armor animation set!
                         -- First, create a deep copy of this animation set for spaceship armor
                         local spaceship_animation_set = table.deepcopy(animation_set)
-                        
+
                         -- Set up the armors list to only include spaceship-armor
-                        spaceship_animation_set.armors = {"spaceship-armor"}
-                        
+                        spaceship_animation_set.armors = { "spaceship-armor" }
+
                         -- Apply grey tint to all animations in this set
-                        local grey_tint = {r = 0.4, g = 0.4, b = 0.4, a = 1.0}  -- Darker grey
-                        
+                        local grey_tint = { r = 0.4, g = 0.4, b = 0.4, a = 1.0 } -- Darker grey
+
                         -- Function to apply tint to a RotatedAnimation
                         local function apply_tint_to_animation(animation)
                             if animation then
@@ -596,7 +696,7 @@ if data.raw["character"] and data.raw["character"]["character"] then
                                 end
                             end
                         end
-                        
+
                         -- Apply tint to all animation types
                         apply_tint_to_animation(spaceship_animation_set.idle)
                         apply_tint_to_animation(spaceship_animation_set.idle_with_gun)
@@ -610,7 +710,7 @@ if data.raw["character"] and data.raw["character"]["character"] then
                         apply_tint_to_animation(spaceship_animation_set.flying_with_gun)
                         apply_tint_to_animation(spaceship_animation_set.take_off)
                         apply_tint_to_animation(spaceship_animation_set.landing)
-                        
+
                         -- Add the new grey-tinted animation set to the character
                         table.insert(character.animations, spaceship_animation_set)
 
@@ -625,18 +725,18 @@ end
 -- Create spaceship armor recipe (independent item, crafted up from power-armor-mk2)
 local spaceshipArmorRecipe = table.deepcopy(data.raw["recipe"]["mech-armor"])
 spaceshipArmorRecipe.name = "spaceship-armor"
-spaceshipArmorRecipe.results = { {type = "item", name = "spaceship-armor", amount = 1} }
+spaceshipArmorRecipe.results = { { type = "item", name = "spaceship-armor", amount = 1 } }
 
 -- Costs similar to mech-armor, plus a required power-armor-mk2 to craft up
 -- from (matches the Space Suit being the middle ground between the two), but
 -- this is a standalone recipe/item and does not replace or hide power-armor-mk2.
 spaceshipArmorRecipe.ingredients = {
-    {type = "item", name = "power-armor-mk2", amount = 1},
-    {type = "item", name = "efficiency-module-2", amount = 25},
-    {type = "item", name = "electric-engine-unit", amount = 40},
-    {type = "item", name = "low-density-structure", amount = 30},
-    {type = "item", name = "processing-unit", amount = 60},
-    {type = "item", name = "speed-module-2", amount = 25}
+    { type = "item", name = "power-armor-mk2",       amount = 1 },
+    { type = "item", name = "efficiency-module-2",   amount = 25 },
+    { type = "item", name = "electric-engine-unit",  amount = 40 },
+    { type = "item", name = "low-density-structure", amount = 30 },
+    { type = "item", name = "processing-unit",       amount = 60 },
+    { type = "item", name = "speed-module-2",        amount = 25 }
 }
 spaceshipArmorRecipe.energy_required = 25
 
@@ -646,14 +746,14 @@ spaceshipArmorRecipe.enabled = false
 local spaceshipArmorTech = {
     type = "technology",
     name = "spaceship-armor-tech",
-    localised_name = {"technology-name.spaceship-armor-tech"},
-    localised_description = {"technology-description.spaceship-armor-tech"},
+    localised_name = { "technology-name.spaceship-armor-tech" },
+    localised_description = { "technology-description.spaceship-armor-tech" },
     icon = nil,
     icons = {
         {
             icon = data.raw["armor"]["mech-armor"].icon,
             icon_size = data.raw["armor"]["mech-armor"].icon_size or 64,
-            tint = {r = 0.4, g = 0.4, b = 0.4, a = 1.0}  -- Dark grey to match armor
+            tint = { r = 0.4, g = 0.4, b = 0.4, a = 1.0 } -- Dark grey to match armor
         }
     },
     effects = {
