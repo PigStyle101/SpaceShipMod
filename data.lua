@@ -45,9 +45,16 @@ local storageLinkItem = {
     name = "spaceship-storage-link",
     localised_name = "Spaceship Storage Link",
     localised_description = "Connected storage module. Each module increases control hub capacity.",
-    icon = data.raw["item"]["cargo-bay"].icon,
-    icon_size = data.raw["item"]["cargo-bay"].icon_size,
-    subgroup = data.raw["item"]["cargo-bay"].subgroup,
+    icon = nil,
+    icon_size = nil,
+    icons = {
+        {
+            icon = data.raw["item"]["cargo-bay"].icon,
+            icon_size = data.raw["item"]["cargo-bay"].icon_size,
+            tint = { r = 0.8, g = 0.8, b = 0.8, a = 1.0 }
+        }
+    },
+    subgroup = "spaceship",
     order = "zz[spaceship-storage-link]",
     place_result = "spaceship-storage-link",
     stack_size = 50
@@ -57,10 +64,12 @@ local storageLinkRecipe = {
     type = "recipe",
     name = "spaceship-storage-link",
     localised_name = "Spaceship Storage Link",
+    subgroup = "spaceship",
     enabled = false,
     ingredients = {
-        { type = "item", name = "steel-chest",        amount = 2 },
-        { type = "item", name = "electronic-circuit", amount = 4 }
+        { type = "item", name = "steel-chest",          amount = 10 },
+        { type = "item", name = "low-density-structure", amount = 5 },
+        { type = "item", name = "advanced-circuit",     amount = 10 }
     },
     results = {
         { type = "item", name = "spaceship-storage-link", amount = 1 }
@@ -118,10 +127,10 @@ local logisticNodeRecipe = table.deepcopy(data.raw["recipe"]["accumulator"])
 local logisticNodeEntity = table.deepcopy(data.raw["roboport"]["roboport"])
 
 logisticNodeItem.name = "spaceship-logistic-node"
-logisticNodeItem.localised_name = "Spaceship Logistic Node"
+logisticNodeItem.localised_name = "Space Roboport"
 logisticNodeItem.place_result = "spaceship-logistic-node"
--- Place in the Space item group's logistics subgroup (alongside the space chests).
-logisticNodeItem.subgroup = "logistics"
+-- Place in the dedicated spaceship subgroup.
+logisticNodeItem.subgroup = "spaceship"
 logisticNodeItem.icon = nil
 logisticNodeItem.icon_size = nil
 logisticNodeItem.icons = {
@@ -133,11 +142,11 @@ logisticNodeItem.icons = {
 }
 
 logisticNodeRecipe.name = "spaceship-logistic-node"
-logisticNodeRecipe.localised_name = "Spaceship Logistic Node"
-logisticNodeRecipe.subgroup = "logistics"
+logisticNodeRecipe.localised_name = "Space Roboport"
+logisticNodeRecipe.subgroup = "spaceship"
 logisticNodeRecipe.ingredients = {
-    { type = "item", name = "accumulator",        amount = 4 },
-    { type = "item", name = "electronic-circuit", amount = 8 }
+    { type = "item", name = "roboport",               amount = 1 },
+    { type = "item", name = "low-density-structure",  amount = 5 }
 }
 logisticNodeRecipe.results = { { type = "item", name = "spaceship-logistic-node", amount = 1 } }
 logisticNodeRecipe.main_product = "spaceship-logistic-node"
@@ -145,7 +154,7 @@ logisticNodeRecipe.enabled = false
 
 -- Configure the deepcopied roboport into a 2x2, space-only logistics node.
 logisticNodeEntity.name = "spaceship-logistic-node"
-logisticNodeEntity.localised_name = "Spaceship Logistic Node"
+logisticNodeEntity.localised_name = "Space Roboport"
 logisticNodeEntity.localised_description = "Bridges spaceship storage to the logistics network."
 logisticNodeEntity.placeable_by = { item = "spaceship-logistic-node", count = 1 }
 logisticNodeEntity.flags = { "placeable-neutral", "player-creation", "not-rotatable" }
@@ -266,20 +275,30 @@ for _, variant in ipairs(SPACE_CHEST_VARIANTS) do
 
     local full_name = variant.name
     local display = variant.display
-    local localised_name = "Spaceship " .. display .. " Chest"
+    local localised_name = "Space-" .. display .. " Chest"
 
     -- Item
     item.name = full_name
     item.localised_name = localised_name
     item.place_result = full_name
-    item.subgroup = "logistics"
+    item.subgroup = "spaceship"
     item.order = "zz[spaceship-chest]-[" .. variant.source .. "]"
+    -- Grey tint to distinguish space logistic chests from their vanilla counterparts.
+    item.icon = nil
+    item.icon_size = nil
+    item.icons = {
+        {
+            icon = data.raw["item"][variant.source].icon,
+            icon_size = data.raw["item"][variant.source].icon_size,
+            tint = { r = 0.8, g = 0.8, b = 0.8, a = 1.0 }
+        }
+    }
     table.insert(spaceChestItems, item)
 
     -- Recipe
     recipe.name = full_name
     recipe.localised_name = localised_name
-    recipe.subgroup = "logistics"
+    recipe.subgroup = "spaceship"
     recipe.enabled = false
     recipe.ingredients = {
         { type = "item", name = variant.source, amount = 1 },
@@ -313,13 +332,18 @@ end
 dockingPortRecipe.name = "spaceship-docking-port"
 dockingPortRecipe.localised_name = "Spaceship Docking Port"
 dockingPortRecipe.localised_description = "Docking port for spaceship."
-dockingPortRecipe.ingredients = { { type = "item", name = "iron-plate", amount = 1 } }
+dockingPortRecipe.subgroup = "spaceship"
+dockingPortRecipe.ingredients = {
+    { type = "item", name = "bulk-inserter",       amount = 1 },
+    { type = "item", name = "constant-combinator", amount = 1 }
+}
 dockingPortRecipe.results = { { type = "item", name = "spaceship-docking-port", amount = 1 } }
 dockingPortRecipe.enabled = false
 
 dockingPortItem.name = "spaceship-docking-port"
 dockingPortItem.localised_name = "Spaceship Docking Port"
 dockingPortItem.place_result = "spaceship-docking-port"
+dockingPortItem.subgroup = "spaceship"
 -- Create tinted icon for docking port using icons property
 dockingPortItem.icon = nil
 dockingPortItem.icon_size = nil
@@ -342,6 +366,7 @@ dockingPortEntity.minable = { mining_time = 0.2, result = "spaceship-docking-por
 controlHubItem.name = "spaceship-control-hub"
 controlHubItem.localised_name = "Spaceship Control Hub"
 controlHubItem.place_result = "spaceship-control-hub"
+controlHubItem.subgroup = "spaceship"
 -- Create tinted icon for control hub using icons property
 controlHubItem.icon = nil
 controlHubItem.icon_size = nil
@@ -355,7 +380,12 @@ controlHubItem.icons = {
 
 controlHubRecipe.name = "spaceship-control-hub"
 controlHubRecipe.localised_name = "Spaceship Control Hub"
-controlHubRecipe.ingredients = { { type = "item", name = "iron-plate", amount = 1 } }
+controlHubRecipe.subgroup = "spaceship"
+controlHubRecipe.ingredients = {
+    { type = "item", name = "steel-plate",         amount = 20 },
+    { type = "item", name = "processing-unit",     amount = 20 },
+    { type = "item", name = "spaceship-flooring",  amount = 5 }
+}
 controlHubRecipe.results = { { type = "item", name = "spaceship-control-hub", amount = 1 } }
 controlHubRecipe.main_product = "spaceship-control-hub"
 controlHubRecipe.hidden = false
@@ -369,6 +399,7 @@ controlHubItemCar.name = "spaceship-control-hub-car"
 
 floorItem.name = "spaceship-flooring"
 floorItem.localised_name = "Spaceship Flooring"
+floorItem.subgroup = "spaceship"
 floorItem.place_as_tile = { result = "spaceship-flooring", condition_size = 0, condition = { layers = {} } }
 -- Use refined concrete icon for spaceship flooring
 floorItem.icon = data.raw["item"]["refined-concrete"].icon
@@ -376,7 +407,11 @@ floorItem.icon_size = data.raw["item"]["refined-concrete"].icon_size
 
 floorRecipe.name = "spaceship-flooring"
 floorRecipe.localised_name = "Spaceship Flooring"
-floorRecipe.ingredients = { { type = "item", name = "iron-plate", amount = 1 } }
+floorRecipe.subgroup = "spaceship"
+floorRecipe.ingredients = {
+    { type = "item", name = "refined-concrete", amount = 10 },
+    { type = "item", name = "steel-plate",      amount = 10 }
+}
 floorRecipe.results = { { type = "item", name = "spaceship-flooring", amount = 10 } }
 floorRecipe.main_product = "spaceship-flooring"
 floorRecipe.hidden = false
@@ -425,6 +460,13 @@ data:extend({
         name = "logistics",
         group = "space",
         order = "a[logistics]"
+    },
+    -- Dedicated subgroup for all spaceship construction items.
+    {
+        type = "item-subgroup",
+        name = "spaceship",
+        group = "space",
+        order = "b[spaceship]"
     },
 })
 

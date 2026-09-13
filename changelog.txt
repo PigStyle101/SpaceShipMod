@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.8.1
+Date: 2026-09-13
+  Changes:
+    - Updated factorio_version to 2.1 (Factorio 2.1.17)
+    - Moved all spaceship items/recipes into a dedicated "spaceship" subgroup in the Space item group
+  Bugfixes:
+    - Fixed invalid "steel" ingredient name (should be "steel-plate") in flooring and control hub recipes, which crashed mods that iterate recycling recipes (e.g. Stacked Recycling Results)
+---------------------------------------------------------------------------------------------------
 Version: 0.8.0
 Date: 2026-04-29
   Changes:
