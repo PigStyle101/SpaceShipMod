@@ -126,16 +126,24 @@ return function(SpaceShip)
         return nil
     end
 
-    -- Entities that may only be built on spaceship flooring, and the message shown when
+    -- Entities restricted to a specific floor tile, with the message shown when
     -- placement is rejected.
-    local RESTRICTED_TO_SPACESHIP_FLOORING = {
-        ["thruster"] = "Thrusters can only be placed on Spaceship Flooring!",
-        ["spaceship-storage-link"] = "The Storage Link can only be placed on Spaceship Flooring!"
+    --   tile: the tile name that must lie under the entity (real or pending ghost).
+    -- Entities that belong on spaceship flooring require "spaceship-flooring";
+    -- the space logistic chests belong on the Space Station Platform instead,
+    -- so they require "space-platform-foundation".
+    local RESTRICTED_TO_FLOOR = {
+        ["thruster"] = { tile = "spaceship-flooring", message = "Thrusters can only be placed on Spaceship Flooring!" },
+        ["spaceship-storage-link"] = { tile = "spaceship-flooring", message = "The Storage Link can only be placed on Spaceship Flooring!" },
+        ["spaceship-passive-provider-chest"] = { tile = "space-platform-foundation", message = "The Passive Provider Chest can only be placed on Space Station Platform!" },
+        ["spaceship-active-provider-chest"] = { tile = "space-platform-foundation", message = "The Active Provider Chest can only be placed on Space Station Platform!" },
+        ["spaceship-storage-chest"] = { tile = "space-platform-foundation", message = "The Storage Chest can only be placed on Space Station Platform!" },
+        ["spaceship-requester-chest"] = { tile = "space-platform-foundation", message = "The Requester Chest can only be placed on Space Station Platform!" }
     }
 
     -- Shared helper: returns a list of tiles under the given bounding box that are
-    -- neither real spaceship-flooring nor a pending spaceship-flooring tile-ghost.
-    local function find_tiles_missing_spaceship_flooring(surface, bounding_box)
+    -- neither real `required_tile` nor a pending `required_tile` tile-ghost.
+    local function find_tiles_missing_floor(surface, bounding_box, required_tile)
         local left_top = { x = math.floor(bounding_box.left_top.x), y = math.floor(bounding_box.left_top.y) }
         local right_bottom = {
             x = math.ceil(bounding_box.right_bottom.x) - 1,
@@ -148,10 +156,10 @@ return function(SpaceShip)
                 local tile = surface.get_tile({ x = x, y = y })
                 local valid_tile = false
 
-                if tile.name == "spaceship-flooring" then
+                if tile.name == required_tile then
                     valid_tile = true
                 else
-                    -- Allow placement on tiles where spaceship flooring is still a pending
+                    -- Allow placement on tiles where the required tile is still a pending
                     -- ghost (e.g. from a blueprint waiting on construction bots). Search the
                     -- tile's full area (rather than a single point) so boundary positions
                     -- reliably hit the tile-ghost's collision box.
@@ -162,7 +170,7 @@ return function(SpaceShip)
                     })
 
                     for _, ghost_tile in pairs(ghost_tiles) do
-                        if ghost_tile.ghost_name == "spaceship-flooring" then
+                        if ghost_tile.ghost_name == required_tile then
                             valid_tile = true
                             break
                         end
@@ -183,12 +191,12 @@ return function(SpaceShip)
 
         local surface = entity.surface
 
-        -- Check spaceship-flooring-only placement restrictions (thruster, storage link, etc.)
-        local restriction_message = RESTRICTED_TO_SPACESHIP_FLOORING[entity.name]
-        if restriction_message then
-            local invalid_tiles = find_tiles_missing_spaceship_flooring(surface, entity.bounding_box)
+        -- Check floor-tile placement restrictions (thruster, storage link, space chests, etc.)
+        local restriction = RESTRICTED_TO_FLOOR[entity.name]
+        if restriction then
+            local invalid_tiles = find_tiles_missing_floor(surface, entity.bounding_box, restriction.tile)
 
-            -- If any tiles are not spaceship flooring (actual or pending ghost), prevent placement
+            -- If any tiles are not the required floor (actual or pending ghost), prevent placement
             if #invalid_tiles > 0 then
                 local item_stack = { name = entity.name, count = 1 }
 
@@ -201,7 +209,7 @@ return function(SpaceShip)
                     end
 
                     -- Show error message to player
-                    player.print("[color=red]" .. restriction_message .. "[/color]")
+                    player.print("[color=red]" .. restriction.message .. "[/color]")
                 else
                     -- No player (robot built), spill on ground
                     surface.spill_item_stack(entity.position, item_stack, true, entity.force, false)
@@ -324,17 +332,18 @@ return function(SpaceShip)
 
         SpaceShip.enforce_docking_port_direction(ghost)
 
-        -- Check spaceship-flooring-only ghost placement restrictions. This is deferred by a
+        -- Check floor-tile ghost placement restrictions. This is deferred by a
         -- tick because when a blueprint places a restricted ghost together with
-        -- spaceship-flooring tile ghosts underneath it, the tile ghosts may not exist yet at
+        -- its floor tile ghosts underneath it, the tile ghosts may not exist yet at
         -- the moment this event fires (event ordering within the same blueprint isn't
         -- guaranteed). Checking a tick later lets the whole blueprint settle first.
-        local restriction_message = RESTRICTED_TO_SPACESHIP_FLOORING[ghost.ghost_name]
-        if restriction_message then
+        local restriction = RESTRICTED_TO_FLOOR[ghost.ghost_name]
+        if restriction then
             storage.pending_ghost_flooring_checks = storage.pending_ghost_flooring_checks or {}
             table.insert(storage.pending_ghost_flooring_checks, {
                 ghost = ghost,
-                message = restriction_message,
+                message = restriction.message,
+                tile = restriction.tile,
                 player_index = player and player.valid and player.index or nil,
                 check_tick = game.tick + 1
             })
@@ -354,7 +363,7 @@ return function(SpaceShip)
 
                 local ghost = entry.ghost
                 if ghost and ghost.valid then
-                    local invalid_tiles = find_tiles_missing_spaceship_flooring(ghost.surface, ghost.bounding_box)
+                    local invalid_tiles = find_tiles_missing_floor(ghost.surface, ghost.bounding_box, entry.tile)
 
                     if #invalid_tiles > 0 then
                         local player = entry.player_index and game.get_player(entry.player_index)

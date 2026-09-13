@@ -37,14 +37,8 @@ local floorRecipe = table.deepcopy(data.raw["recipe"]["space-platform-foundation
 -- Control Hub prototypes (based on various prototypes)
 local controlHubItem = table.deepcopy(data.raw["item"]["cargo-bay"])
 local controlHubRecipe = table.deepcopy(data.raw["recipe"]["cargo-bay"])
-local controlHubEntityHub = table.deepcopy(data.raw["space-platform-hub"]["space-platform-hub"])
 local controlHubItemCar = table.deepcopy(data.raw["item-with-entity-data"]["car"])
 local storageLinkEntity = table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-
-local linkedChestPrototype = data.raw["linked-container"] and data.raw["linked-container"]["linked-chest"] or nil
-local linkedChestItem = data.raw.item and data.raw.item["linked-chest"] or nil
-local steelChestItem = data.raw.item and data.raw.item["steel-chest"] or nil
-local steelChestPrototype = data.raw.container and data.raw.container["steel-chest"] or nil
 
 local storageLinkItem = {
     type = "item",
@@ -119,22 +113,28 @@ storageLinkEntity.sprites = {
 
 local logisticNodeItem = table.deepcopy(data.raw["item"]["accumulator"])
 local logisticNodeRecipe = table.deepcopy(data.raw["recipe"]["accumulator"])
+-- Deepcopy the real roboport so we inherit its full visual set (base pad, antenna,
+-- doors, recharging glow, sounds, circuit connector, etc.) and only resize it to 2x2.
+local logisticNodeEntity = table.deepcopy(data.raw["roboport"]["roboport"])
 
 logisticNodeItem.name = "spaceship-logistic-node"
 logisticNodeItem.localised_name = "Spaceship Logistic Node"
 logisticNodeItem.place_result = "spaceship-logistic-node"
+-- Place in the Space item group's logistics subgroup (alongside the space chests).
+logisticNodeItem.subgroup = "logistics"
 logisticNodeItem.icon = nil
 logisticNodeItem.icon_size = nil
 logisticNodeItem.icons = {
     {
-        icon = data.raw["item"]["accumulator"].icon,
-        icon_size = data.raw["item"]["accumulator"].icon_size,
-        tint = { r = 0.6, g = 0.6, b = 0.8, a = 1.0 }
+        icon = data.raw["item"]["roboport"].icon,
+        icon_size = data.raw["item"]["roboport"].icon_size,
+        tint = { r = 0.8, g = 0.8, b = 0.8, a = 1.0 }
     }
 }
 
 logisticNodeRecipe.name = "spaceship-logistic-node"
 logisticNodeRecipe.localised_name = "Spaceship Logistic Node"
+logisticNodeRecipe.subgroup = "logistics"
 logisticNodeRecipe.ingredients = {
     { type = "item", name = "accumulator",        amount = 4 },
     { type = "item", name = "electronic-circuit", amount = 8 }
@@ -142,6 +142,169 @@ logisticNodeRecipe.ingredients = {
 logisticNodeRecipe.results = { { type = "item", name = "spaceship-logistic-node", amount = 1 } }
 logisticNodeRecipe.main_product = "spaceship-logistic-node"
 logisticNodeRecipe.enabled = false
+
+-- Configure the deepcopied roboport into a 2x2, space-only logistics node.
+logisticNodeEntity.name = "spaceship-logistic-node"
+logisticNodeEntity.localised_name = "Spaceship Logistic Node"
+logisticNodeEntity.localised_description = "Bridges spaceship storage to the logistics network."
+logisticNodeEntity.placeable_by = { item = "spaceship-logistic-node", count = 1 }
+logisticNodeEntity.flags = { "placeable-neutral", "player-creation", "not-rotatable" }
+logisticNodeEntity.minable = { mining_time = 0.2, result = "spaceship-logistic-node" }
+logisticNodeEntity.max_health = 150
+-- The vanilla 3x3 roboport corpse/explosion would misalign on a 2x2 footprint.
+logisticNodeEntity.corpse = nil
+logisticNodeEntity.dying_explosion = nil
+-- 2x2 footprint
+logisticNodeEntity.collision_box = { { -1, -1 }, { 1, 1 } }
+logisticNodeEntity.selection_box = { { -1, -1 }, { 1, 1 } }
+-- Robots can be stored and charged here. The deepcopy inherits the vanilla
+-- roboport's electric energy source, robot/material slots, and charging values;
+-- we only tune the radii. The ship's electric network (create_electric_network)
+-- powers it.
+logisticNodeEntity.logistics_radius = 20
+logisticNodeEntity.construction_radius = 0
+-- Space-only placement: space surfaces have pressure 0 (same condition as space-platform-hub).
+-- The vanilla roboport uses pressure min=10 (planets only), which would forbid space placement.
+logisticNodeEntity.surface_conditions = {
+    {
+        property = "pressure",
+        min = 0,
+        max = 0
+    }
+}
+-- Scale the whole roboport visual set down to fit the 2x2 footprint. The vanilla
+-- base sprite is 228x277 @ 0.5 (114x138 px) for a 3x3 pad. LOGISTIC_NODE_SCALE is
+-- halfway between the previous 0.28 and full size (1.0). Each layer's existing
+-- scale is multiplied by this factor.
+local LOGISTIC_NODE_SCALE = 0.64
+-- `shift` is an absolute tile offset independent of `scale`, so it must be scaled by the
+-- same factor as the sprite size. Otherwise each sub-component (base pad, doors, antenna,
+-- recharging glow) shrinks in place but stays at its original 3x3-pad distance from the
+-- others, causing pieces like the round door hatch to visually separate from the base
+-- pad ("doubled ring" artifact).
+local function scale_roboport_shift(shift, scale)
+    if not shift then return end
+    if shift.x ~= nil or shift.y ~= nil then
+        shift.x = (shift.x or 0) * scale
+        shift.y = (shift.y or 0) * scale
+    else
+        shift[1] = (shift[1] or 0) * scale
+        shift[2] = (shift[2] or 0) * scale
+    end
+end
+
+local function scale_roboport_sprite(sprite, scale)
+    if not sprite then return end
+    if sprite.layers then
+        for _, layer in ipairs(sprite.layers) do
+            layer.scale = (layer.scale or 0.5) * scale
+            scale_roboport_shift(layer.shift, scale)
+        end
+    else
+        sprite.scale = (sprite.scale or 0.5) * scale
+        scale_roboport_shift(sprite.shift, scale)
+    end
+end
+scale_roboport_sprite(logisticNodeEntity.base, LOGISTIC_NODE_SCALE)
+scale_roboport_sprite(logisticNodeEntity.base_patch, LOGISTIC_NODE_SCALE)
+scale_roboport_sprite(logisticNodeEntity.base_animation, LOGISTIC_NODE_SCALE)
+scale_roboport_sprite(logisticNodeEntity.door_animation_up, LOGISTIC_NODE_SCALE)
+scale_roboport_sprite(logisticNodeEntity.door_animation_down, LOGISTIC_NODE_SCALE)
+scale_roboport_sprite(logisticNodeEntity.recharging_animation, LOGISTIC_NODE_SCALE)
+-- Pull charging offsets in to the 2x2 footprint
+logisticNodeEntity.charging_offsets = {
+    { -0.5, -0.5 },
+    { 0.5,  -0.5 },
+    { -0.5, 0.5 },
+    { 0.5,  0.5 },
+}
+
+-- =============================================================================
+-- SPACE LOGISTIC CHESTS
+-- Space-only variants of the four vanilla logistic chests. Following the
+-- logistic-node pattern: each is a deepcopy of the vanilla chest, renamed with
+-- the "spaceship-" prefix, placed in the space-platform subgroup, and given a
+-- pressure=0 surface condition so it can only be built where there is no
+-- atmosphere (on spaceship flooring). They are stand-alone logistic entities:
+-- they join the ship's logistics network through the logistic node's radius,
+-- exactly like the vanilla chests join a roboport's network.
+-- =============================================================================
+
+local SPACE_CHEST_VARIANTS = {
+    {
+        source = "passive-provider-chest",
+        name = "spaceship-passive-provider-chest",
+        display = "Passive Provider",
+    },
+    {
+        source = "active-provider-chest",
+        name = "spaceship-active-provider-chest",
+        display = "Active Provider",
+    },
+    {
+        source = "storage-chest",
+        name = "spaceship-storage-chest",
+        display = "Storage",
+    },
+    {
+        source = "requester-chest",
+        name = "spaceship-requester-chest",
+        display = "Requester",
+    },
+}
+
+local spaceChestItems = {}
+local spaceChestRecipes = {}
+local spaceChestEntities = {}
+
+for _, variant in ipairs(SPACE_CHEST_VARIANTS) do
+    -- Deepcopy the matching vanilla item/recipe/entity (all logistic chests are
+    -- type "logistic-container"; the item/recipe sources are vanilla chests).
+    local item = table.deepcopy(data.raw["item"][variant.source])
+    local recipe = table.deepcopy(data.raw["recipe"][variant.source])
+    local entity = table.deepcopy(data.raw["logistic-container"][variant.source])
+
+    local full_name = variant.name
+    local display = variant.display
+    local localised_name = "Spaceship " .. display .. " Chest"
+
+    -- Item
+    item.name = full_name
+    item.localised_name = localised_name
+    item.place_result = full_name
+    item.subgroup = "logistics"
+    item.order = "zz[spaceship-chest]-[" .. variant.source .. "]"
+    table.insert(spaceChestItems, item)
+
+    -- Recipe
+    recipe.name = full_name
+    recipe.localised_name = localised_name
+    recipe.subgroup = "logistics"
+    recipe.enabled = false
+    recipe.ingredients = {
+        { type = "item", name = variant.source, amount = 1 },
+        { type = "item", name = "steel-plate", amount = 4 }
+    }
+    recipe.results = { { type = "item", name = full_name, amount = 1 } }
+    recipe.main_product = full_name
+    table.insert(spaceChestRecipes, recipe)
+
+    -- Entity
+    entity.name = full_name
+    entity.localised_name = localised_name
+    entity.localised_description = "Space " .. display .. " Chest. Connects to the ship's logistics network."
+    entity.placeable_by = { item = full_name, count = 1 }
+    entity.minable = { mining_time = 0.2, result = full_name }
+    -- Space-only placement (same pressure=0 condition as the logistic node and hub).
+    entity.surface_conditions = {
+        {
+            property = "pressure",
+            min = 0,
+            max = 0
+        }
+    }
+    table.insert(spaceChestEntities, entity)
+end
 
 -- =============================================================================
 -- DOCKING PORT MODIFICATIONS
@@ -254,6 +417,17 @@ end
 -- DATA EXTEND - Register all prototypes with the game
 -- =============================================================================
 
+-- Custom logistics subgroup in the Space item group for the space logistic
+-- node and space logistic chests.
+data:extend({
+    {
+        type = "item-subgroup",
+        name = "logistics",
+        group = "space",
+        order = "a[logistics]"
+    },
+})
+
 data:extend({
     -- Custom Control Hub Container Entity
     {
@@ -291,93 +465,13 @@ data:extend({
     },
 
     -- Spaceship Logistic Node Entity (roboport-based logistics participant)
-    {
-        type = "roboport",
-        name = "spaceship-logistic-node",
-        localised_name = "Spaceship Logistic Node",
-        localised_description = "Bridges spaceship storage to the logistics network.",
-        placeable_by = { item = "spaceship-logistic-node", count = 1 },
-        flags = { "placeable-neutral", "player-creation", "not-rotatable" },
-        icon = data.raw["item"]["accumulator"].icon,
-        icon_size = data.raw["item"]["accumulator"].icon_size,
-        minable = { mining_time = 0.2, result = "spaceship-logistic-node" },
-        max_health = 150,
-        collision_box = { { -1, -1 }, { 1, 1 } },
-        selection_box = { { -1, -1 }, { 1, 1 } },
-        energy_source = { type = "void" },
-        energy_usage = "0W",
-        recharge_minimum = "0J",
-        logistics_radius = 20,
-        construction_radius = 0,
-        robot_slots_count = 0,
-        material_slots_count = 0,
-        request_to_open_door_timeout = 0,
-        spawn_and_station_height = 0,
-        charge_approach_distance = 0,
-        charging_energy = "0J",
-        -- Use accumulator body sprite as the base visual
-        base = {
-            layers = {
-                {
-                    filename = "__base__/graphics/entity/accumulator/accumulator.png",
-                    priority = "high",
-                    width = 124,
-                    height = 103,
-                    shift = { 0.7, -0.2 },
-                    scale = 0.5,
-                },
-            }
-        },
-        -- Central hatch sprite for door animation
-        door_animation_up =
-        {
-            filename = "__base__/graphics/entity/roboport/roboport-door-up.png",
-            priority = "medium",
-            width = 97,
-            height = 38,
-            frame_count = 16,
-            shift = util.by_pixel(-0.25, -39.5),
-            scale = 0.5
-        },
-        door_animation_down =
-        {
-            filename = "__base__/graphics/entity/roboport/roboport-door-down.png",
-            priority = "medium",
-            width = 97,
-            height = 41,
-            frame_count = 16,
-            shift = util.by_pixel(-0.25, -19.75),
-            scale = 0.5
-        },
-        -- Antenna glow sprite for recharging animation
-        recharging_animation =
-        {
-            filename = "__base__/graphics/entity/roboport/roboport-recharging.png",
-            draw_as_glow = true,
-            priority = "high",
-            width = 37,
-            height = 35,
-            frame_count = 16,
-            scale = 1.5,
-            animation_speed = 0.5,
-        },
-        -- Antenna charging offsets
-        charging_offsets = {
-            { -0.5, -0.5 },
-            { 0.5,  -0.5 },
-            { -0.5, 0.5 },
-            { 0.5,  0.5 },
-        },
-        base_animation = {
-            filename = "__base__/graphics/entity/accumulator/accumulator.png",
-            priority = "high",
-            width = 124,
-            height = 103,
-            shift = { 0.7, -0.2 },
-            scale = 0.5,
-            frame_count = 1,
-        },
-    },
+    logisticNodeEntity,
+
+    -- Space Logistic Chests (space-only variants of the four vanilla chests)
+    spaceChestEntities[1],
+    spaceChestEntities[2],
+    spaceChestEntities[3],
+    spaceChestEntities[4],
 
     -- Control Hub Car Entity (for driving mechanics)
     {
@@ -470,6 +564,22 @@ data:extend({
             {
                 type = "unlock-recipe",
                 recipe = "spaceship-logistic-node"
+            },
+            {
+                type = "unlock-recipe",
+                recipe = "spaceship-passive-provider-chest"
+            },
+            {
+                type = "unlock-recipe",
+                recipe = "spaceship-active-provider-chest"
+            },
+            {
+                type = "unlock-recipe",
+                recipe = "spaceship-storage-chest"
+            },
+            {
+                type = "unlock-recipe",
+                recipe = "spaceship-requester-chest"
             }
         },
         prerequisites = { "space-science-pack", "spaceship-armor-tech" },
@@ -499,10 +609,17 @@ data:extend({
     storageLinkItem,
     storageLinkRecipe,
     storageLinkEntity,
-    controlHubEntityHub,
     controlHubItemCar,
     logisticNodeItem,
     logisticNodeRecipe,
+    spaceChestItems[1],
+    spaceChestItems[2],
+    spaceChestItems[3],
+    spaceChestItems[4],
+    spaceChestRecipes[1],
+    spaceChestRecipes[2],
+    spaceChestRecipes[3],
+    spaceChestRecipes[4],
 })
 
 -- Add the custom spaceship flooring tile if it was created successfully

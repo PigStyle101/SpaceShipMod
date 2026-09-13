@@ -408,11 +408,6 @@ function ShipGuiControl.on_gui_click(event)
     return true
 end
 
-script.on_event(defines.events.on_gui_click, function(event)
-    ShipGuiControl.on_gui_click(event)
-
-end)
-
 function ShipGuiControl.on_gui_checked_state_changed(event)
     local element = event.element
 
@@ -517,9 +512,5 @@ function ShipGuiControl.on_gui_text_changed(event)
 
     return true
 end
-
-script.on_event(defines.events.on_gui_text_changed, function(event)
-    ShipGuiControl.on_gui_text_changed(event)
-end)
 
 return ShipGuiControl

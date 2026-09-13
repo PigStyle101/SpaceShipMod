@@ -17,7 +17,7 @@ end
 function SpaceShipFunctions.list_space_platforms(player)
     -- Ensure the player is valid
     if not player or not player.valid then
-        player.print("Error: Invalid player.")
+        game.print("Error: Invalid player.")
         return
     end
 

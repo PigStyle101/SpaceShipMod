@@ -135,12 +135,18 @@ script.on_event(defines.events.on_built_entity, function(event)
 end)
 
 script.on_event(defines.events.on_robot_built_entity, function(event)
-    local player = game.get_player(event.robot.force.players[1].index)
+    local player = nil
+    if event.robot and event.robot.force and event.robot.force.players and event.robot.force.players[1] then
+        player = game.get_player(event.robot.force.players[1].index)
+    end
     SpaceShip.handle_built_entity(event.entity, player)
 end)
 
 script.on_event(defines.events.on_space_platform_built_entity, function(event)
-    local player = game.get_player(event.platform.force.players[1].index)
+    local player = nil
+    if event.platform and event.platform.force and event.platform.force.players and event.platform.force.players[1] then
+        player = game.get_player(event.platform.force.players[1].index)
+    end
     SpaceShip.handle_built_entity(event.entity, player)
 end)
 
@@ -212,7 +218,7 @@ script.on_event(defines.events.on_gui_opened, function(event)
         end
     end
 
-    if event.entity and event.entity.name == "spaceship-docking-port" then
+    if event.entity and event.entity.valid and event.entity.name == "spaceship-docking-port" then
         -- Close default GUI
         if player.opened then
             player.opened = nil
@@ -262,9 +268,6 @@ script.on_event(defines.events.on_tick, function(event)
         storage.scan_highlights = nil            -- Clear the highlights
     end
 
-    if storage.SpaceShip and storage.SpaceShip[storage.docking_ship].scanned then
-        goto continue
-    end
     if not storage.spaceships or not storage.spaceships[storage.docking_ship] then goto continue end
     if game.tick % 10 == 0 and
         storage.spaceships and
@@ -351,15 +354,13 @@ script.on_event(defines.events.on_tick, function(event)
         SpaceShip.refresh_all_ship_storage_capacities()
     end
 
-    -- Process pending planet drops
-    SpaceShip.process_pending_drops()
-
     -- Restore entities that were temporarily disabled during cloning
     if storage.entities_to_restore and storage.entities_to_restore_tick and game.tick >= storage.entities_to_restore_tick then
         for _, entity_data in pairs(storage.entities_to_restore) do
             if entity_data.entity and entity_data.entity.valid then
                 local ok = pcall(function()
-                    entity_data.entity.active = entity_data.active
+                    -- `entity.active` is read-only; restore via `disabled_by_script`.
+                    entity_data.entity.disabled_by_script = not entity_data.active
                 end)
                 if not ok then
                     -- Ignore unsupported active-state writes on newer API/runtime versions.
@@ -501,8 +502,6 @@ script.on_event(defines.events.on_selected_entity_changed, function(event)
                         value = "false"
                     end
                     hovering_gui.add { type = "label", name = key .. tostring(value), caption = key .. ":" .. tostring(value) }
-                elseif key == "surface" then
-                    hovering_gui.add { type = "label", name = key .. tostring(value), caption = key .. ":" .. tostring(value.name) }
                 end
             end
             hovering_gui.location = { x = 100, y = 100 } -- Position the GUI on the screen
@@ -520,6 +519,7 @@ script.on_event(defines.events.on_space_platform_changed_state, function(event)
     Stations.handle_platform_state_change(event)
 
     local plat = event.platform
+    if not (plat and plat.valid) then return end
     if string.find(plat.name, "-ship") and event.platform.state == defines.space_platform_state.waiting_at_station then
         if event.old_state == defines.space_platform_state.on_the_path then
             local hub = plat.surface.find_entities_filtered { name = "spaceship-control-hub" }
@@ -568,7 +568,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
         -- Find the ship associated with this hub
         local ship
         for _, value in pairs(storage.spaceships or {}) do
-            if value.hub.unit_number == closed_entity.unit_number then
+            if value.hub and value.hub.valid and value.hub.unit_number == closed_entity.unit_number then
                 ship = storage.spaceships[value.id]
                 break
             end

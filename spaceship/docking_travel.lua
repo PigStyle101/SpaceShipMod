@@ -174,12 +174,13 @@ return function(SpaceShip)
 
         if storage.highlight_data then
             for _, rendering in pairs(storage.highlight_data) do
-                if rendering.valid then
+                if rendering and rendering.valid then
                     rendering.destroy()
                 end
             end
-            storage.highlight_data[player.index] = nil
+            storage.highlight_data = nil
         end
+        storage.highlight_data_player_index = nil
 
         game.print("Takeoff confirmed! Ship cloned to orbit.")
         local hubs_in_area = dest_surface.find_entities_filtered({
@@ -219,8 +220,7 @@ return function(SpaceShip)
 
     -- Function to cancel spaceship takeoff
     function SpaceShip.cancel_dock(ship)
-        local src_surface = game.surfaces["nauvis"] -- change this at some point
-        local player_index = storage.takeoff_player
+        local player_index = storage.docking_player
         local player = game.get_player(player_index)
 
         if player then
@@ -235,15 +235,16 @@ return function(SpaceShip)
             end
         end
 
-        for _, id in ipairs(storage.takeoff_highlights or {}) do
-            local ok, obj = pcall(function()
-                return rendering.get_object_by_id(id)
-            end)
-            if ok and obj and obj.valid then
-                obj.destroy()
+        -- Destroy the highlight renders created during the dock flow
+        if storage.highlight_data then
+            for _, rendering in pairs(storage.highlight_data) do
+                if rendering and rendering.valid then
+                    rendering.destroy()
+                end
             end
+            storage.highlight_data = nil
         end
-        storage.takeoff_highlights = nil
+        storage.highlight_data_player_index = nil
         if player and player.gui.screen["dock-confirmation-gui"] then
             player.gui.screen["dock-confirmation-gui"].destroy()
         end

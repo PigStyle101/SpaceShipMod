@@ -1106,7 +1106,7 @@ function schedule_gui.make_gui(player, schedule, automatic, ship_name, ship_id, 
         local station_widget = add_station {
             main_frame = schedule_container,
             ship_id = ship_id,
-            station_locale_name = station_names[record.station][1],
+            station_locale_name = station_names[record.station] and station_names[record.station][1] or record.station,
             station_static_name = record.station,
             station_index = _,
             current_destination = current_destination,

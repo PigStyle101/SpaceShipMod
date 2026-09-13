@@ -100,8 +100,10 @@ return function(SpaceShip)
     SpaceShip.register_docking_port = function(entity)
         if not storage.docking_ports then SpaceShip.init_docking_ports() end
         local name
-        if entity.surface.get_tile(entity.position.x, entity.position.y).name ~= "spaceship-flooring" then
-            name = entity.surface.platform.space_location.name .. table_size(storage.docking_ports)
+        local tile = entity.surface.get_tile(entity.position.x, entity.position.y)
+        if tile and tile.name ~= "spaceship-flooring" then
+            local location = entity.surface.platform and entity.surface.platform.space_location
+            name = (location and location.name or "unknown") .. table_size(storage.docking_ports)
         else
             name = "ship"
         end
@@ -262,12 +264,13 @@ return function(SpaceShip)
         else
             local target_planet = schedule.records[schedule.current].station
             for unit_number, port_data in pairs(storage.docking_ports) do
-                if port_data.entity.valid and port_data.surface.platform and
+                if port_data and port_data.entity and port_data.entity.valid and
+                    port_data.surface and port_data.surface.valid and port_data.surface.platform and
                     port_data.surface.platform.space_location and
                     port_data.surface.platform.space_location.name == target_planet and
                     not port_data.ship_docked then
                     local port_tile = port_data.surface.get_tile(port_data.position.x, port_data.position.y)
-                    if port_tile.name ~= "spaceship-flooring" then
+                    if port_tile and port_tile.name ~= "spaceship-flooring" then
                         target_docking_port = port_data.entity
                         target_docking_port_unit_number = unit_number
                         break
@@ -280,7 +283,8 @@ return function(SpaceShip)
             end
         end
 
-        if storage.docking_ports[target_docking_port_unit_number].ship_docked or not ship.scanned or
+        local target_port_data = storage.docking_ports[target_docking_port_unit_number]
+        if not target_port_data or target_port_data.ship_docked or not ship.scanned or
             not ship.reference_tile or not ship.floor or not ship.docking_port or not ship.docking_port.valid then
             if not ship.scanned or not ship.reference_tile or not ship.floor or not ship.docking_port or not ship.docking_port.valid then
                 if not storage.scan_state then
@@ -288,7 +292,7 @@ return function(SpaceShip)
                     ship.waiting_for_scan = true
                     SpaceShip.start_scan_ship(ship, 60, 1)
                 end
-            elseif storage.docking_ports[target_docking_port_unit_number].ship_docked then
+            elseif target_port_data and target_port_data.ship_docked then
                 ship.waiting_for_open_dock = true
                 if not ship.waiting_for_open_dock_since_tick then
                     ship.waiting_for_open_dock_since_tick = game.tick

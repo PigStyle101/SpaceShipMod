@@ -264,6 +264,10 @@ return function(SpaceShip)
     function SpaceShip.ship_takeoff(ship, dropdown)
         local stationID = dropdown.selected_index
         local station   = dropdown.items[stationID]
+        if not station then
+            game.print("Error: No destination selected.")
+            return
+        end
         local schedule  = {
             current = 1,
             records = {
@@ -301,7 +305,7 @@ return function(SpaceShip)
             ship.schedule.current = 1 --default to 1 of not already set
         end
         if ship.schedule.records then
-            record =
+            local record =
             {
                 station = planet_name,
                 wait_conditions = {
@@ -439,14 +443,14 @@ return function(SpaceShip)
         local progress = {}
         local passenger_on_ship = nil
 
-        for station_index, station in pairs(ship.schedule.records) do
+        for station_index, station in ipairs(ship.schedule.records) do
             if station.wait_conditions then
                 progress[station_index] = {}
                 local station_is_active = ship.automatic and
                     tonumber(ship.schedule.current) == tonumber(station_index) and
                     is_ship_at_station_record(ship, station)
 
-                for condition_index, condition in pairs(station.wait_conditions) do
+                for condition_index, condition in ipairs(station.wait_conditions) do
                     local progress_value = 0
 
                     local condition_type = normalize_condition_type(condition and condition.type)
@@ -581,7 +585,7 @@ return function(SpaceShip)
             return true
         end
 
-        local result = true
+        local result = false
         local temp_and_result = true
         local valid_conditions_found = false
         local signals = nil
@@ -631,11 +635,7 @@ return function(SpaceShip)
         end
 
         -- Apply the final grouped `and` result to the main result
-        if not result or not temp_and_result then
-            result = false
-        else
-            result = result and temp_and_result
-        end
+        result = result or temp_and_result
         return result
     end
 

@@ -184,8 +184,9 @@ return function(SpaceShip)
     local function set_entity_active(entity, active)
         if not (entity and entity.valid) then return false end
 
+        -- `entity.active` is read-only; the writable property is `disabled_by_script`.
         local ok, err = pcall(function()
-            entity.active = active
+            entity.disabled_by_script = not active
         end)
 
         return ok, err
@@ -1203,7 +1204,7 @@ return function(SpaceShip)
 
     function SpaceShip.clone_ship_to_space_platform(ship)
         if not ship or not ship.player or not ship.player.valid then
-            ship.game.print("Error: Invalid player.")
+            game.print("Error: Invalid player.")
             return
         end
 
@@ -1226,6 +1227,11 @@ return function(SpaceShip)
         for _, surface in pairs(ship.player.force.platforms) do
             space_platform_temp = surface
             break
+        end
+
+        if not space_platform_temp then
+            game.print("Error: No space platform found to copy map settings from.")
+            return
         end
 
         local space_platform = ship.player.force.create_space_platform({

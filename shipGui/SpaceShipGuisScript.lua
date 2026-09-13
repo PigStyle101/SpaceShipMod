@@ -107,6 +107,7 @@ end
 
 function SpaceShipGuis.on_station_move_up(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.station_move_up(ship, event.station_index)
 
     local player = game.get_player(event.player_index)
@@ -120,6 +121,7 @@ end
 
 function SpaceShipGuis.on_station_move_down(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.station_move_down(ship, event.station_index)
 
     local player = game.get_player(event.player_index)
@@ -149,6 +151,7 @@ end
 
 function SpaceShipGuis.on_station_condition_add(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     local condition_type = event.selected_condition_type
     if not condition_type then
         condition_type = string.lower(string.gsub(event.selected_item or "", " condition", ""))
@@ -173,6 +176,7 @@ end
 
 function SpaceShipGuis.on_condition_move_up(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.condition_move_up(ship, event.station_index, event.condition_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.refresh_station_conditions(player, ship, event.station_index)) then
@@ -182,6 +186,7 @@ end
 
 function SpaceShipGuis.on_condition_move_down(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.condition_move_down(ship, event.station_index, event.condition_index)
     local player = game.get_player(event.player_index)
     if not (player and player.valid and gui_maker.refresh_station_conditions(player, ship, event.station_index)) then
@@ -209,16 +214,19 @@ end
 
 function SpaceShipGuis.on_condition_constant_confirmed(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.constant_changed(ship, event.station_index, event.condition_index, event.amount)
 end
 
 function SpaceShipGuis.on_condition_time_confirmed(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.time_changed(ship, event.station_index, event.condition_index, event.amount)
 end
 
 function SpaceShipGuis.on_comparison_sign_changed(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.compare_changed(ship, event.station_index, event.condition_index, event.comparator)
 end
 
@@ -235,6 +243,7 @@ end
 
 function SpaceShipGuis.on_first_signal_selected(event)
     local ship = storage.spaceships[event.ship_id]
+    if not ship then return end
     SpaceShip.signal_changed(ship, event.station_index, event.condition_index, event.selected_signal)
 end
 
@@ -484,24 +493,25 @@ function SpaceShipGuis.handle_button_click(event)
     local player = game.get_player(event.player_index)
     if button_name == "ship-takeoff" then -- Call the shipTakeoff function
         local ship = storage.spaceships[event.element.tags.ship]
-        local dropdown = event.element.parent["surface-dropdown"]
+        if not ship then return end
+        local dropdown = event.element.parent and event.element.parent["surface-dropdown"]
         SpaceShip.ship_takeoff(ship, dropdown)
         SpaceShip.set_automatic_mode(ship, true)
     elseif button_name == "confirm-dock" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.finalize_dock(ship)
+        if ship then SpaceShip.finalize_dock(ship) end
     elseif button_name == "cancel-dock" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.cancel_dock(ship)
+        if ship then SpaceShip.cancel_dock(ship) end
     elseif button_name == "ship-dock" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.dock_ship(ship)
+        if ship then SpaceShip.dock_ship(ship) end
     elseif button_name == "drop-player-to-planet" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.drop_player_to_planet(ship)
+        if ship then SpaceShip.drop_player_to_planet(ship) end
     elseif button_name == "drop-items-to-planet" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShip.drop_items_to_planet(ship)
+        if ship then SpaceShip.drop_items_to_planet(ship) end
     elseif button_name == "make-station" then
         --- First click: show confirmation warning and change button to confirm.
         local button = event.element
@@ -512,7 +522,7 @@ function SpaceShipGuis.handle_button_click(event)
         game.print("[color=yellow]Warning: This will convert your ship into a station. Engines will be removed and all Spaceship Flooring will be converted to Space Platform Foundation. Click again to confirm.[/color]")
     elseif button_name == "make-station-confirm" then
         local ship = storage.spaceships[event.element.tags.ship]
-        SpaceShipGuis.make_station_confirm(ship, player)
+        if ship then SpaceShipGuis.make_station_confirm(ship, player) end
     elseif button_name == "close-dock-gui" then
         SpaceShipGuis.close_docking_port_gui(player)
     end
