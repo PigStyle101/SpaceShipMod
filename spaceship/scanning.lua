@@ -366,10 +366,38 @@ return function(SpaceShip)
 
                 if entity and entity.valid and entity.name ~= "spaceship-flooring" and
                     entity.type ~= "resource" and entity.type ~= "character" then
-                    local tx = math.floor(entity.position.x)
-                    local ty = math.floor(entity.position.y)
-                    local row = state.flooring_lookup[tx]
-                    if row and row[ty] then
+                    -- Only include entities that sit fully on spaceship flooring.
+                    -- Checking just the center position lets large entities (e.g. a
+                    -- 2x2 roboport) that straddle the ship's edge get cloned even
+                    -- though part of them hangs off the flooring. Verify the whole
+                    -- bounding box is on flooring instead.
+                    local fully_on_floor = false
+                    local ok_bb, bb = pcall(function() return entity.bounding_box end)
+                    if ok_bb and bb then
+                        -- bounding_box right_bottom is exclusive, so the last tile
+                        -- the entity occupies is ceil(right_bottom) - 1.
+                        local min_tx = math.floor(bb.left_top.x)
+                        local max_tx = math.ceil(bb.right_bottom.x) - 1
+                        local min_ty = math.floor(bb.left_top.y)
+                        local max_ty = math.ceil(bb.right_bottom.y) - 1
+                        fully_on_floor = true
+                        for x = min_tx, max_tx do
+                            local row = state.flooring_lookup[x]
+                            if not row then
+                                fully_on_floor = false
+                                break
+                            end
+                            for y = min_ty, max_ty do
+                                if not row[y] then
+                                    fully_on_floor = false
+                                    break
+                                end
+                            end
+                            if not fully_on_floor then break end
+                        end
+                    end
+
+                    if fully_on_floor then
                         state.entities_on_flooring[#state.entities_on_flooring + 1] = entity
                         if entity.name == "spaceship-docking-port" then
                             state.docking_port = entity

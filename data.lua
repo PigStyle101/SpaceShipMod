@@ -171,7 +171,7 @@ logisticNodeEntity.selection_box = { { -1, -1 }, { 1, 1 } }
 -- we only tune the radii. The ship's electric network (create_electric_network)
 -- powers it.
 logisticNodeEntity.logistics_radius = 20
-logisticNodeEntity.construction_radius = 0
+logisticNodeEntity.construction_radius = 20
 -- Space-only placement: space surfaces have pressure 0 (same condition as space-platform-hub).
 -- The vanilla roboport uses pressure min=10 (planets only), which would forbid space placement.
 logisticNodeEntity.surface_conditions = {
@@ -479,11 +479,18 @@ data:extend({
         localised_description = "Main control hub for the spaceship.",
         placeable_by = data.raw["item"]["spaceship-control-hub"],
         flags = { "placeable-neutral", "player-creation", "not-rotatable" },
-        icon = "__SpaceShipMod__/control-hub.png",
+        icon = "__Shipage__/control-hub.png",
         icon_size = 500,
         logistic_mode = "buffer",
         max_logistic_slots = 10,
-        circuit_connector = data.raw["container"]["iron-chest"].circuit_connector,
+        -- Offset the circuit wire hookup to the bottom-right, matching the
+        -- space-platform-hub's connector placement.
+        circuit_connector = {
+            points = {
+                wire = { red = { 2.566, 0.863 }, green = { 2.332, 1.027 } },
+                shadow = { red = { 4.066, 2.363 }, green = { 3.832, 2.527 } }
+            }
+        },
         circuit_wire_max_distance = data.raw["container"]["iron-chest"].circuit_wire_max_distance,
         draw_circuit_wires = true,
         inventory_size = 50,
@@ -495,7 +502,7 @@ data:extend({
         picture = {
             layers = {
                 {
-                    filename = "__SpaceShipMod__/control-hub.png",
+                    filename = "__Shipage__/control-hub.png",
                     priority = "high",
                     width = 500,
                     height = 500,
@@ -584,7 +591,7 @@ data:extend({
         name = "spaceship-construction",
         localised_name = "Spaceship Construction",
         localised_description = "Advanced spaceship components for interstellar travel.",
-        icon = "__SpaceShipMod__/control-hub.png",
+        icon = "__Shipage__/control-hub.png",
         icon_size = 500,
         effects = {
             {
@@ -613,20 +620,12 @@ data:extend({
             },
             {
                 type = "unlock-recipe",
-                recipe = "spaceship-active-provider-chest"
-            },
-            {
-                type = "unlock-recipe",
                 recipe = "spaceship-storage-chest"
-            },
-            {
-                type = "unlock-recipe",
-                recipe = "spaceship-requester-chest"
             }
         },
         prerequisites = { "space-science-pack", "spaceship-armor-tech" },
         unit = {
-            count = 1000,
+            count = 500,
             ingredients = {
                 { "automation-science-pack", 1 },
                 { "logistic-science-pack",   1 },
@@ -733,6 +732,15 @@ end
 -- Modify existing technology prerequisites
 if data.raw.technology["space-platform-thruster"] then
     data.raw.technology["space-platform-thruster"].prerequisites = { "spaceship-construction" }
+end
+
+-- Unlock the space active-provider and requester chests alongside their vanilla
+-- counterparts (both are unlocked by the vanilla logistic-robotics technology).
+if data.raw.technology["logistic-robotics"] then
+    local tech = data.raw.technology["logistic-robotics"]
+    tech.effects = tech.effects or {}
+    table.insert(tech.effects, { type = "unlock-recipe", recipe = "spaceship-active-provider-chest" })
+    table.insert(tech.effects, { type = "unlock-recipe", recipe = "spaceship-requester-chest" })
 end
 
 -- =============================================================================
@@ -971,4 +979,4 @@ end
 -- TIPS AND TRICKS
 -- =============================================================================
 
-require("__SpaceShipMod__/prototypes/tips-and-tricks")
+require("__Shipage__/prototypes/tips-and-tricks")

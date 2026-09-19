@@ -1,4 +1,4 @@
-# Copilot instructions for SpaceShipMod (Factorio 2.0 + Space Age)
+# Copilot instructions for Shipage (Factorio 2.0 + Space Age)
 
 ## Big picture architecture
 - This is a Factorio mod with two execution phases:

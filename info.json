@@ -1,10 +1,10 @@
 {
-  "name": "SpaceShipMod",
-  "version": "0.8.1",
+  "name": "Shipage",
+  "version": "0.9.1",
   "factorio_version": "2.1",
-  "title": "Spaceship Mod",
-  "author": "Your Name",
-  "description": "Prevents engines on space platforms and creates a new multiblock spaceship from a space platform hub controller.",
+  "title": "Shipage",
+  "author": "PigStyle",
+  "description": "Ever wanted your platforms to actually be stations and for ships to dock on them? Well this is the mod for you then.",
   "dependencies": [
     "base >= 1.1.0",
     "space-age"

@@ -1,4 +1,26 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.9.1
+Date: 2026-09-19
+  Changes:
+    - Reduced spaceship-construction research cost from 1000 to 500 science packs
+    - Space active-provider and requester chests now unlock with the vanilla logistic-robotics technology instead of spaceship-construction
+    - Offset the spaceship control hub circuit wire hookup to the bottom-right to match the space platform hub
+    - Space Roboport now has a construction radius (20) so construction bots can build ghosts on the ship
+  Bugfixes:
+    - Fixed a non-recoverable error when a player in map view was sent to space by rocket (character surface mismatch on set_controller)
+    - Fixed a second player being ejected from the cockpit when another player tried to leave mid-flight
+    - Fixed entities (e.g. a roboport) straddling the ship's edge being cloned even though they were not fully on spaceship flooring
+---------------------------------------------------------------------------------------------------
+Version: 0.9.0
+Date: 2026-09-13
+  Changes:
+    - Renamed mod to "Shipage" (was "Spaceship Mod")
+---------------------------------------------------------------------------------------------------
+Version: 0.8.2
+Date: 2026-09-13
+  Changes:
+    - Disabled control hub hover info by default; added a "spaceship-show-hover-info" startup setting to toggle it for troubleshooting
+---------------------------------------------------------------------------------------------------
 Version: 0.8.1
 Date: 2026-09-13
   Changes:

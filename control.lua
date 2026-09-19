@@ -415,8 +415,20 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
             -- themselves outside the ship mid-flight/orbit.
             if not ship.docked and vehicle.valid then
                 local put_back = false
+                -- A car has both a driver and a passenger seat. Put the departing
+                -- player back into the seat they occupied so a second occupant
+                -- isn't displaced. If someone else is already driving, the
+                -- departing player must have been the passenger.
+                local current_driver = vehicle.get_driver()
+                local driver_is_other = current_driver and current_driver.valid and
+                    current_driver.player and current_driver.player.valid and
+                    current_driver.player.index ~= player.index
                 pcall(function()
-                    vehicle.set_driver(player)
+                    if driver_is_other then
+                        vehicle.set_passenger(player)
+                    else
+                        vehicle.set_driver(player)
+                    end
                     put_back = true
                 end)
                 if put_back then
@@ -444,6 +456,15 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
 
         if just_arrived_by_rocket then
             player.leave_space_platform()
+            -- If the player is in map view, their character may still be on the
+            -- platform surface while the player controller is on the planet.
+            -- set_controller requires the character to be on the same surface as
+            -- the player, so teleport the character over first to avoid a
+            -- surface-mismatch error.
+            local character = player.character
+            if character and character.valid and character.surface ~= player.surface then
+                character.teleport(player.position, player.surface)
+            end
             player.set_controller({ type = defines.controllers.character, character = player.character })
             storage.recent_rocket_arrival_tick[event.player_index] = nil
             storage.platform_hub_action_tick[event.player_index] = game.tick
@@ -474,6 +495,15 @@ end)
 script.on_event(defines.events.on_selected_entity_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player or not player.valid then return end
+
+    -- Hover info is a debug aid, disabled by default. Toggle via the
+    -- "spaceship-show-hover-info" startup setting.
+    if not settings.startup["spaceship-show-hover-info"].value then
+        if player.gui.screen["hovering_gui"] then
+            player.gui.screen["hovering_gui"].destroy()
+        end
+        return
+    end
 
     local selected_entity = player.selected -- The entity the player is currently hovering over
     -- Check if the player is hovering over the spaceship-control-hub

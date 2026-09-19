@@ -1,4 +1,4 @@
-local simulations = require("__SpaceShipMod__/prototypes/tips-and-tricks-simulations")
+local simulations = require("__Shipage__/prototypes/tips-and-tricks-simulations")
 
 data:extend(
 {

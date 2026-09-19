@@ -1,5 +1,5 @@
 local simulations = {}
-local DEFAULT_SIMULATION_MODS = { "SpaceShipMod" }
+local DEFAULT_SIMULATION_MODS = { "Shipage" }
 local DEFAULT_SIMULATION_SPEED_UPDATE = "game.speed = 1"
 
 local function apply_default_simulation_mods()
@@ -20,7 +20,7 @@ end
 
 simulations.spaceship_overview =
 {
-  save = "__SpaceShipMod__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
+  save = "__Shipage__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
   init =
   [[
     require("__core__/lualib/story")
@@ -80,8 +80,8 @@ simulations.spaceship_overview =
 simulations.entering_spaceship_cockpit =
 {
   checkboard = false,
-  mods = { "SpaceShipMod" },
-  save = "__SpaceShipMod__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
+  mods = { "Shipage" },
+  save = "__Shipage__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
   init =
   [[
     require("__core__/lualib/story")
@@ -189,8 +189,8 @@ simulations.entering_spaceship_cockpit =
 simulations.first_visit_to_new_planet =
 {
   checkboard = false,
-  mods = { "SpaceShipMod" },
-  save = "__SpaceShipMod__/prototypes/tips-and-tricks/saves/Dropping-to-planet.zip",
+  mods = { "Shipage" },
+  save = "__Shipage__/prototypes/tips-and-tricks/saves/Dropping-to-planet.zip",
   init =
   [[
     require("__core__/lualib/story")
@@ -276,8 +276,8 @@ simulations.first_visit_to_new_planet =
 simulations.station_to_planet_transportation =
 {
   checkboard = false,
-  mods = { "SpaceShipMod" },
-  save = "__SpaceShipMod__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
+  mods = { "Shipage" },
+  save = "__Shipage__/prototypes/tips-and-tricks/saves/spaceship-overview-space.zip",
   init =
   [[
     require("__core__/lualib/story")
@@ -374,8 +374,8 @@ simulations.station_to_planet_transportation =
 
 simulations.spaceship_gui =
 {
-  mods = { "SpaceShipMod" },
-  save = "__SpaceShipMod__/prototypes/tips-and-tricks/saves/spaceship-gui-space.zip",
+  mods = { "Shipage" },
+  save = "__Shipage__/prototypes/tips-and-tricks/saves/spaceship-gui-space.zip",
   init =
   [[
     require("__core__/lualib/story")
