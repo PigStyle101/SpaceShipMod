@@ -483,14 +483,9 @@ data:extend({
         icon_size = 500,
         logistic_mode = "buffer",
         max_logistic_slots = 10,
-        -- Offset the circuit wire hookup to the bottom-right, matching the
-        -- space-platform-hub's connector placement.
-        circuit_connector = {
-            points = {
-                wire = { red = { 2.566, 0.863 }, green = { 2.332, 1.027 } },
-                shadow = { red = { 4.066, 2.363 }, green = { 3.832, 2.527 } }
-            }
-        },
+        -- Place the circuit wire hookup in the same spot as the space-platform-hub
+        -- (the two hubs are the same size), so deepcopy its connector directly.
+        circuit_connector = table.deepcopy(data.raw["space-platform-hub"]["space-platform-hub"].circuit_connector),
         circuit_wire_max_distance = data.raw["container"]["iron-chest"].circuit_wire_max_distance,
         draw_circuit_wires = true,
         inventory_size = 50,
